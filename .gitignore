@@ -1,0 +1,17 @@
+# Rust build artifacts
+target/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+cli/mosaic.toml
+test_xml_result.xml
+test_output.txt
+debug_*.txt
