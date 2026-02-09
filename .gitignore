@@ -1,3 +1,6 @@
+# Local research files
+research/
+
 # Rust build artifacts
 target/
 
