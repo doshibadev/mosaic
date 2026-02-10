@@ -38,6 +38,9 @@ async fn main() -> anyhow::Result<()> {
                 installer::install_all().await?;
             }
         }
+        Commands::Remove { package } => {
+            installer::remove_package(package).await?;
+        }
     }
 
     Ok(())

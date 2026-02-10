@@ -17,4 +17,9 @@ pub enum Commands {
         /// Package name (e.g. logger@1.0.0 or github:user/repo)
         package: Option<String>,
     },
+    /// Remove a package
+    Remove {
+        /// Package name to remove
+        package: String,
+    },
 }

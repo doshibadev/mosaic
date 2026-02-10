@@ -1,5 +1,4 @@
 use anyhow::Result;
-
 use quick_xml::events::{BytesEnd, BytesStart, Event};
 use quick_xml::reader::Reader;
 use quick_xml::writer::Writer;
@@ -10,7 +9,6 @@ pub fn inject_module_script(poly_xml: &str, name: &str, source: &str) -> Result<
     reader.config_mut().trim_text(false);
     let mut writer = Writer::new(Cursor::new(Vec::new()));
     let mut buf = Vec::new();
-
     let mut in_script_service = false;
     let mut depth = 0;
 
@@ -31,36 +29,33 @@ pub fn inject_module_script(poly_xml: &str, name: &str, source: &str) -> Result<
                 depth -= 1;
                 if in_script_service && e.local_name().as_ref() == b"Item" && depth == 1 {
                     // Inject our module script
-                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n  ")))?;
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n ")))?;
                     let mut script_item = BytesStart::new("Item");
                     script_item.push_attribute(("class", "ModuleScript"));
                     writer.write_event(Event::Start(script_item))?;
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n ")))?;
 
-                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n    ")))?;
                     let props_start = BytesStart::new("Properties");
                     writer.write_event(Event::Start(props_start))?;
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n ")))?;
 
-                    writer
-                        .write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
                     let mut source_start = BytesStart::new("string");
                     source_start.push_attribute(("name", "Source"));
                     writer.write_event(Event::Start(source_start))?;
                     writer.write_event(Event::Text(quick_xml::events::BytesText::new(source)))?;
                     writer.write_event(Event::End(BytesEnd::new("string")))?;
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n ")))?;
 
-                    writer
-                        .write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
                     let mut name_start = BytesStart::new("string");
                     name_start.push_attribute(("name", "Name"));
                     writer.write_event(Event::Start(name_start))?;
                     writer.write_event(Event::Text(quick_xml::events::BytesText::new(name)))?;
                     writer.write_event(Event::End(BytesEnd::new("string")))?;
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n ")))?;
 
-                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n    ")))?;
                     writer.write_event(Event::End(BytesEnd::new("Properties")))?;
-                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n  ")))?;
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n ")))?;
                     writer.write_event(Event::End(BytesEnd::new("Item")))?;
-
                     in_script_service = false;
                 }
                 writer.write_event(Event::End(e))?;
@@ -75,4 +70,116 @@ pub fn inject_module_script(poly_xml: &str, name: &str, source: &str) -> Result<
 
     let result = writer.into_inner().into_inner();
     Ok(String::from_utf8(result)?)
+}
+
+pub fn remove_module_script(poly_xml: &str, name: &str) -> Result<String> {
+    let mut reader = Reader::from_str(poly_xml);
+    reader.config_mut().trim_text(false);
+    let mut writer = Writer::new(Cursor::new(Vec::new()));
+    let mut buf = Vec::new();
+    let mut in_script_service = false;
+    let mut depth = 0;
+    let mut capturing_item = false;
+    let mut item_buffer: Vec<quick_xml::events::Event> = Vec::new();
+    let mut current_item_name = String::new();
+    let mut capturing_name_text = false;
+
+    loop {
+        let event = reader.read_event_into(&mut buf)?;
+        match &event {
+            Event::Start(e) => {
+                depth += 1;
+                if e.local_name().as_ref() == b"Item" {
+                    if let Some(attr) = e.try_get_attribute("class")? {
+                        if attr.value.as_ref() == b"ScriptService" {
+                            in_script_service = true;
+                        } else if in_script_service
+                            && attr.value.as_ref() == b"ModuleScript"
+                            && depth == 3
+                        {
+                            capturing_item = true;
+                        }
+                    }
+                } else if capturing_item && e.local_name().as_ref() == b"string" {
+                    if let Some(attr) = e.try_get_attribute("name")? {
+                        if attr.value.as_ref() == b"Name" {
+                            capturing_name_text = true;
+                        }
+                    }
+                }
+            }
+            Event::End(e) => {
+                depth -= 1;
+                if e.local_name().as_ref() == b"Item" {
+                    if in_script_service && depth == 1 {
+                        in_script_service = false;
+                    }
+                }
+            }
+            Event::Text(t) => {
+                if capturing_name_text {
+                    let text = reader.decoder().decode(t.as_ref())?;
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        current_item_name = trimmed.to_string();
+                        capturing_name_text = false;
+                    }
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+
+        if capturing_item {
+            item_buffer.push(event.into_owned());
+            let last_event = item_buffer.last().unwrap();
+            if let Event::End(e) = last_event {
+                if e.local_name().as_ref() == b"Item" && depth == 2 {
+                    // Finished capturing an Item at depth 3 (child of ScriptService)
+                    if current_item_name != name {
+                        for ev in item_buffer.drain(..) {
+                            writer.write_event(ev)?;
+                        }
+                    } else {
+                        // Skip this item!
+                        item_buffer.clear();
+                    }
+                    capturing_item = false;
+                    current_item_name.clear();
+                }
+            }
+        } else {
+            writer.write_event(event)?;
+        }
+        buf.clear();
+    }
+
+    let result = writer.into_inner().into_inner();
+    Ok(String::from_utf8(result)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_removal() {
+        let xml = r#"
+            <Item class="ScriptService">
+                <Item class="ModuleScript">
+                    <Properties>
+                        <string name="Name">logger</string>
+                    </Properties>
+                </Item>
+                <Item class="ModuleScript">
+                    <Properties>
+                        <string name="Name">other</string>
+                    </Properties>
+                </Item>
+            </Item>
+        "#;
+        let result = remove_module_script(xml, "logger").unwrap();
+        assert!(!result.contains("logger"));
+        assert!(result.contains("other"));
+    }
 }

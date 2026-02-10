@@ -29,6 +29,10 @@ impl Config {
             .insert(name.to_string(), query.to_string());
     }
 
+    pub fn remove_dependency(&mut self, name: &str) {
+        self.dependencies.remove(name);
+    }
+
     pub fn save(&self) -> anyhow::Result<()> {
         let toml = toml::to_string_pretty(self)?;
         std::fs::write("mosaic.toml", toml)?;

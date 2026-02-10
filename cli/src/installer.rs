@@ -69,3 +69,34 @@ pub async fn install_all() -> Result<()> {
 
     Ok(())
 }
+
+pub async fn remove_package(name: &str) -> Result<()> {
+    // 1. Load config and remove from dependencies
+    let mut config = crate::config::Config::load()?;
+    config.remove_dependency(name);
+    config.save()?;
+    println!("Removed {} from mosaic.toml", name);
+
+    // 2. Find .poly file and remove from XML
+    let entries = fs::read_dir(".")?;
+    let mut poly_file_path = None;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("poly") {
+            poly_file_path = Some(path);
+            break;
+        }
+    }
+
+    if let Some(poly_path) = poly_file_path {
+        let poly_content = fs::read_to_string(&poly_path)?;
+        let new_content = xml_handler::remove_module_script(&poly_content, name)?;
+        fs::write(&poly_path, new_content)?;
+        println!("Successfully removed {} from {:?}", name, poly_path);
+    } else {
+        println!("No .poly file found to remove module from.");
+    }
+
+    Ok(())
+}
