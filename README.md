@@ -1,15 +1,20 @@
 # Mosaic
 
 <div align="center">
-  <img src="./assets/logo.png" alt="Mosaic Logo" width="300">
-</div>
+
+<img src="./assets/logo.png" alt="Mosaic Logo" width="200"/>
+
+**A package manager for Polytoria game development.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Built%20with-Rust-orange)](https://www.rust-lang.org/)
 [![Status: In Development](https://img.shields.io/badge/Status-In%20Development-blue)](https://github.com/yourusername/mosaic)
-[![Discord](https://img.shields.io/discord/DISCORD_ID?label=Polytoria&logo=discord)](https://polytoria.com)
 
-**A package manager for Polytoria game development.**
+[Quick Start](#quick-start) • [Features](#features) • [Documentation](#documentation) • [Contributing](#contributing)
+
+</div>
+
+---
 
 Mosaic simplifies how developers share and manage reusable Lua libraries. Install packages, manage versions, and build games faster.
 
@@ -70,6 +75,20 @@ Follow this repository or join the [Polytoria Discord](https://polytoria.com) fo
 ---
 
 ## How It Works
+
+Mosaic acts as a bridge between the Lua ecosystem and Polytoria's XML-based project format.
+
+```mermaid
+graph TD
+    A[mosaic.toml] -->|Declares| B(Dependencies)
+    B -->|github:user/repo| C{Mosaic CLI}
+    C -->|Downloads| D[Lua Blobs]
+    C -->|Injects| E[.poly Project File]
+    E -->|Contains| F[ModuleScripts]
+    F -->|require| G[Your Game Logic]
+
+    style C fill:#f96,stroke:#333,stroke-width:2px
+```
 
 1. **Initialize a project** — `mosaic init` creates a `mosaic.toml` file
 2. **Declare dependencies** — Add packages to your config
