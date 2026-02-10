@@ -129,7 +129,22 @@ pub async fn get_package(
     };
 
     match package {
-        Some(p) => (StatusCode::OK, Json(json!(p))),
+        Some(p) => {
+            let version = get_latest_version(&state, &p).await;
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "id": p.id,
+                    "name": p.name,
+                    "description": p.description,
+                    "author": p.author,
+                    "repository": p.repository,
+                    "created_at": p.created_at,
+                    "updated_at": p.updated_at,
+                    "version": version
+                })),
+            )
+        }
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Package not found"})),

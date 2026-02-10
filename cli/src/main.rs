@@ -14,6 +14,12 @@ use logger::Logger;
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    if let Some(url) = &cli.api_url {
+        unsafe {
+            std::env::set_var("MOSAIC_REGISTRY_URL", url);
+        }
+    }
+
     match &cli.command {
         Commands::Init => {
             Logger::banner();

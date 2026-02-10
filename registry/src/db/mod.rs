@@ -52,8 +52,8 @@ pub async fn connect() -> Result<DB> {
     // We define an index on name and description for fast discovery.
     // SurrealDB will handle the typo-tolerance and relevance.
     let _ = db.query("
-        DEFINE ANALYZER IF NOT EXISTS custom_ascii TOKENIZERS class FILTERS lowercase, ascii;
-        DEFINE INDEX IF NOT EXISTS package_search ON TABLE package COLUMNS name, description SEARCH ANALYZER custom_ascii BM25 HIGHLIGHTS;
+        DEFINE ANALYZER OVERWRITE ascii TOKENIZERS class FILTERS lowercase, ascii;
+        DEFINE INDEX OVERWRITE package_search ON TABLE package COLUMNS name, description SEARCH ANALYZER ascii BM25 HIGHLIGHTS;
     ").await;
 
     Ok(db)

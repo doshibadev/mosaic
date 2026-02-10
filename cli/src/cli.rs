@@ -6,6 +6,10 @@ use clap::{Parser, Subcommand};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+
+    /// Override the registry API URL
+    #[arg(long, global = true)]
+    pub api_url: Option<String>,
 }
 
 #[derive(Subcommand)]
