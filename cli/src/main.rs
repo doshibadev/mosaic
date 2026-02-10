@@ -62,6 +62,10 @@ async fn main() -> anyhow::Result<()> {
             Logger::banner();
             registry::login().await?;
         }
+        Commands::Signup => {
+            Logger::banner();
+            registry::signup().await?;
+        }
         Commands::Publish { version } => {
             registry::publish(version.as_deref()).await?;
         }

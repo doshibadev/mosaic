@@ -52,18 +52,57 @@ pub async fn signup(
         created_at: chrono::Utc::now().timestamp(),
     };
 
-    let created: Result<Option<User>, _> = state.db.create("user").content(user).await;
+    let created_user: User = match state.db.create("user").content(user).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to create user"})),
+            );
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Could not create user: {}", e)})),
+            );
+        }
+    };
 
-    match created {
-        Ok(_) => (
-            StatusCode::CREATED,
-            Json(json!({"message": "User created successfully"})),
-        ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Could not create user: {}", e)})),
-        ),
-    }
+    // 4. Generate JWT
+    let secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let expiration = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(7))
+        .expect("valid timestamp")
+        .timestamp();
+
+    let claims = Claims {
+        sub: created_user.id.map(|id| id.to_string()).unwrap_or_default(),
+        username: created_user.username.clone(),
+        exp: expiration,
+    };
+
+    let token = match encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_ref()),
+    ) {
+        Ok(t) => t,
+        Err(_) => {
+            // User was created but token failed - they can still log in manually
+            return (
+                StatusCode::CREATED,
+                Json(json!({"message": "User created successfully but token generation failed"})),
+            );
+        }
+    };
+
+    (
+        StatusCode::CREATED,
+        Json(json!(AuthResponse {
+            token,
+            username: created_user.username,
+        })),
+    )
 }
 
 pub async fn login(

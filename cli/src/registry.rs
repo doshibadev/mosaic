@@ -55,6 +55,55 @@ pub async fn login() -> Result<()> {
     Ok(())
 }
 
+pub async fn signup() -> Result<()> {
+    let username = Text::new("Choose Username:").prompt()?;
+    let password = Password::new("Choose Password:")
+        .with_display_mode(inquire::PasswordDisplayMode::Masked)
+        .prompt()?;
+
+    Logger::info("Creating account on Mosaic Registry...");
+
+    let client = reqwest::Client::new();
+    let registry_url = std::env::var("MOSAIC_REGISTRY_URL")
+        .unwrap_or_else(|_| "https://api.getmosaic.run".to_string());
+
+    let response = client
+        .post(format!("{}/auth/signup", registry_url))
+        .json(&json!({
+            "username": username,
+            "password": password
+        }))
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        Logger::success(format!(
+            "Account created successfully for {}!",
+            Logger::highlight(&username)
+        ));
+        Logger::info("Logging you in automatically...");
+
+        let data: serde_json::Value = response.json().await?;
+        let token = data["token"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Token missing in response"))?;
+
+        let mut auth = AuthConfig::load()?;
+        auth.token = Some(token.to_string());
+        auth.username = Some(username.clone());
+        auth.registry_url = Some(registry_url);
+        auth.save()?;
+
+        Logger::success("Successfully logged in!");
+    } else {
+        let error: serde_json::Value = response.json().await?;
+        let msg = error["error"].as_str().unwrap_or("Unknown error");
+        Logger::error(format!("Signup failed: {}", msg));
+    }
+
+    Ok(())
+}
+
 pub async fn search(query: String) -> Result<()> {
     let auth = AuthConfig::load()?;
     let registry_url = auth
