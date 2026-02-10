@@ -76,6 +76,20 @@ Follow this repository or join the [Polytoria Discord](https://polytoria.com) fo
 
 ## How It Works
 
+Mosaic acts as a bridge between the Lua ecosystem and Polytoria's XML-based project format.
+
+```mermaid
+graph TD
+    A[mosaic.toml] -->|Declares| B(Dependencies)
+    B -->|github:user/repo| C{Mosaic CLI}
+    C -->|Downloads| D[Lua Blobs]
+    C -->|Injects| E[.poly Project File]
+    E -->|Contains| F[ModuleScripts]
+    F -->|require| G[Your Game Logic]
+
+    style C fill:#f96,stroke:#333,stroke-width:2px
+```
+
 1. **Initialize a project** — `mosaic init` creates a `mosaic.toml` file
 2. **Declare dependencies** — Add packages to your config
 3. **Install packages** — `mosaic install` downloads and injects ModuleScripts
