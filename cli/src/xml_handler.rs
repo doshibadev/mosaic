@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_removal() {
-        let xml = r#"
+        let xml = r#"<game>
             <Item class="ScriptService">
                 <Item class="ModuleScript">
                     <Properties>
@@ -177,7 +177,7 @@ mod tests {
                     </Properties>
                 </Item>
             </Item>
-        "#;
+        </game>"#;
         let result = remove_module_script(xml, "logger").unwrap();
         assert!(!result.contains("logger"));
         assert!(result.contains("other"));
