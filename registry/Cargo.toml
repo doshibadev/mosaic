@@ -7,8 +7,8 @@ edition = "2024"
 anyhow = "1.0.101"
 argon2 = "0.5.3"
 async-trait = "0.1.89"
-aws-config = "1.8.13"
-aws-sdk-s3 = "1.122.0"
+aws-config = { version = "1.8.13", features = ["rustls"] }
+aws-sdk-s3 = { version = "1.122.0", features = ["rustls"] }
 axum = "0.8.8"
 axum-extra = { version = "0.12.5", features = ["typed-header"] }
 chrono = "0.4.43"
@@ -28,9 +28,6 @@ tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 uuid = { version = "1.20.0", features = ["v4", "serde"] }
-
-
-[dependencies.rustls]
-version = "0.23"
-default-features = false
-features = ["ring"]
+rustls = { version = "0.23", default-features = false, features = [
+  "aws-lc-rs",
+] }

@@ -11,16 +11,39 @@ pub async fn connect() -> Result<DB> {
     let pass = env::var("SURREAL_PASS").unwrap_or_else(|_| "root".to_string());
     let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "mosaic".to_string());
     let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "registry".to_string());
+    let scope = env::var("SURREAL_SCOPE").unwrap_or_else(|_| "root".to_string());
 
     // 1. Connect
     let db = any::connect(url).await?;
 
-    // 2. Authenticate
-    db.signin(surrealdb::opt::auth::Root {
-        username: &user,
-        password: &pass,
-    })
-    .await?;
+    // 2. Authenticate based on scope
+    match scope.to_lowercase().as_str() {
+        "namespace" => {
+            db.signin(surrealdb::opt::auth::Namespace {
+                namespace: &ns,
+                username: &user,
+                password: &pass,
+            })
+            .await?;
+        }
+        "database" => {
+            db.signin(surrealdb::opt::auth::Database {
+                namespace: &ns,
+                database: &db_name,
+                username: &user,
+                password: &pass,
+            })
+            .await?;
+        }
+        _ => {
+            // Default to Root
+            db.signin(surrealdb::opt::auth::Root {
+                username: &user,
+                password: &pass,
+            })
+            .await?;
+        }
+    }
 
     // 3. Select namespace and database
     db.use_ns(ns).use_db(db_name).await?;

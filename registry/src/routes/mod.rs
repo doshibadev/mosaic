@@ -27,11 +27,11 @@ pub fn create_routes(state: AppState) -> Router {
         .route("/", get(list_packages))
         .route("/", post(create_package))
         .route("/search", get(search_packages))
-        .route("/blobs/:hash", get(download_blob))
-        .route("/:name", get(get_package))
-        .route("/:name/versions", get(list_versions))
-        .route("/:name/versions", post(create_version))
-        .route("/:name/versions/:version/upload", post(upload_blob));
+        .route("/blobs/{hash}", get(download_blob))
+        .route("/{name}", get(get_package))
+        .route("/{name}/versions", get(list_versions))
+        .route("/{name}/versions", post(create_version))
+        .route("/{name}/versions/{version}/upload", post(upload_blob));
 
     Router::new()
         .route("/health", get(health_check))
