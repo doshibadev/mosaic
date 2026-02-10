@@ -30,8 +30,18 @@ pub async fn login() -> Result<()> {
         .send()
         .await?;
 
-    if response.status().is_success() {
-        let data: serde_json::Value = response.json().await?;
+    let status = response.status();
+    let text = response.text().await?;
+
+    if status.is_success() {
+        let data: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(d) => d,
+            Err(_) => {
+                Logger::error(format!("Server returned invalid JSON: {}", text));
+                return Err(anyhow!("Invalid server response"));
+            }
+        };
+
         let token = data["token"]
             .as_str()
             .ok_or_else(|| anyhow!("Token missing in response"))?;
@@ -47,9 +57,11 @@ pub async fn login() -> Result<()> {
             Logger::highlight(&username)
         ));
     } else {
-        let error: serde_json::Value = response.json().await?;
-        let msg = error["error"].as_str().unwrap_or("Unknown error");
-        Logger::error(format!("Login failed: {}", msg));
+        let msg = match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(json) => json["error"].as_str().unwrap_or(&text).to_string(),
+            Err(_) => text, // If not JSON, use raw text (e.g. 500 Internal Server Error)
+        };
+        Logger::error(format!("Login failed ({}): {}", status, msg));
     }
 
     Ok(())
@@ -59,6 +71,7 @@ pub async fn signup() -> Result<()> {
     let username = Text::new("Choose Username:").prompt()?;
     let password = Password::new("Choose Password:")
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
+        .without_confirmation() // Explicitly disable confirmation just in case
         .prompt()?;
 
     Logger::info("Creating account on Mosaic Registry...");
@@ -76,14 +89,24 @@ pub async fn signup() -> Result<()> {
         .send()
         .await?;
 
-    if response.status().is_success() {
+    let status = response.status();
+    let text = response.text().await?;
+
+    if status.is_success() {
         Logger::success(format!(
             "Account created successfully for {}!",
             Logger::highlight(&username)
         ));
         Logger::info("Logging you in automatically...");
 
-        let data: serde_json::Value = response.json().await?;
+        let data: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(d) => d,
+            Err(_) => {
+                Logger::error(format!("Server returned invalid JSON: {}", text));
+                return Err(anyhow!("Invalid server response"));
+            }
+        };
+
         let token = data["token"]
             .as_str()
             .ok_or_else(|| anyhow!("Token missing in response"))?;
@@ -96,9 +119,11 @@ pub async fn signup() -> Result<()> {
 
         Logger::success("Successfully logged in!");
     } else {
-        let error: serde_json::Value = response.json().await?;
-        let msg = error["error"].as_str().unwrap_or("Unknown error");
-        Logger::error(format!("Signup failed: {}", msg));
+        let msg = match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(json) => json["error"].as_str().unwrap_or(&text).to_string(),
+            Err(_) => text,
+        };
+        Logger::error(format!("Signup failed ({}): {}", status, msg));
     }
 
     Ok(())
@@ -209,8 +234,52 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
         .await?;
 
     if !reg_res.status().is_success() && reg_res.status() != reqwest::StatusCode::CONFLICT {
-        let err: serde_json::Value = reg_res.json().await?;
-        return Err(anyhow!("Failed to register version: {}", err["error"]));
+        // If package doesn't exist, try to create it first
+        if reg_res.status() == reqwest::StatusCode::NOT_FOUND {
+            Logger::info("Package doesn't exist. Creating package...");
+            let create_pkg_res = client
+                .post(format!("{}/packages", registry_url))
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&json!({
+                    "name": name,
+                    "description": "A Mosaic package", // Default description
+                    "repository": "",
+                    "author": auth.username.as_ref().unwrap_or(&"unknown".to_string()),
+                    "created_at": 0,
+                    "updated_at": 0
+                }))
+                .send()
+                .await?;
+
+            if !create_pkg_res.status().is_success() {
+                 let status = create_pkg_res.status();
+                 let text = create_pkg_res.text().await?;
+                 let msg = match serde_json::from_str::<serde_json::Value>(&text) {
+                     Ok(json) => json["error"].as_str().unwrap_or(&text).to_string(),
+                     Err(_) => text,
+                 };
+                 return Err(anyhow!("Failed to create package ({}): {}", status, msg));
+            }
+            
+            // Retry registering version
+            let retry_res = client
+                .post(format!("{}/packages/{}/versions", registry_url, name))
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&json!({
+                    "version": version,
+                    "lua_source_url": "tbd"
+                }))
+                .send()
+                .await?;
+
+            if !retry_res.status().is_success() && retry_res.status() != reqwest::StatusCode::CONFLICT {
+                let err: serde_json::Value = retry_res.json().await?;
+                return Err(anyhow!("Failed to register version after package creation: {}", err["error"]));
+            }
+        } else {
+             let err: serde_json::Value = reg_res.json().await?;
+             return Err(anyhow!("Failed to register version: {}", err["error"]));
+        }
     }
 
     // 3. Upload Blob
