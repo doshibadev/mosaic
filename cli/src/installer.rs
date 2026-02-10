@@ -6,7 +6,7 @@ use comfy_table::Table;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 
-pub async fn install_package(package_query: &str) -> Result<String> {
+pub async fn install_package(package_query: &str) -> Result<(String, String)> {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
         ProgressStyle::default_spinner()
@@ -16,21 +16,45 @@ pub async fn install_package(package_query: &str) -> Result<String> {
     pb.set_message(format!("Resolving {}", Logger::highlight(package_query)));
     pb.enable_steady_tick(std::time::Duration::from_millis(120));
 
-    // Registry format: name@version
-    let parts: Vec<&str> = package_query.split('@').collect();
-    if parts.len() != 2 {
-        pb.finish_and_clear();
-        return Err(anyhow!("Invalid package format. Expected: name@version"));
-    }
-    let name = parts[0];
-    let version = parts[1];
+    // Support both name and name@version
+    let (name, version) = if package_query.contains('@') {
+        let parts: Vec<&str> = package_query.split('@').collect();
+        if parts.len() != 2 {
+            pb.finish_and_clear();
+            return Err(anyhow!("Invalid package format. Expected: name or name@version"));
+        }
+        (parts[0].to_string(), parts[1].to_string())
+    } else {
+        // Fetch latest version from registry
+        pb.set_message(format!("Fetching latest version for {}...", Logger::highlight(package_query)));
+        let registry_url = std::env::var("MOSAIC_REGISTRY_URL")
+            .unwrap_or_else(|_| "https://api.getmosaic.run".to_string());
+        
+        let client = reqwest::Client::new();
+        let res = client.get(format!("{}/packages/{}", registry_url, package_query))
+            .send()
+            .await?;
+        
+        if !res.status().is_success() {
+            pb.finish_and_clear();
+            return Err(anyhow!("Package not found in registry: {}", package_query));
+        }
+
+        let pkg: serde_json::Value = res.json().await?;
+        let latest_version = pkg["version"].as_str()
+            .ok_or_else(|| anyhow!("Could not determine latest version"))?
+            .to_string();
+        
+        (package_query.to_string(), latest_version)
+    };
 
     pb.set_message(format!(
-        "Downloading {} from Registry...",
-        Logger::highlight(name)
+        "Downloading {}@{} from Registry...",
+        Logger::highlight(&name),
+        Logger::brand_text(&version)
     ));
 
-    let lua_code = registry::download_from_registry(name, version).await?;
+    let lua_code = registry::download_from_registry(&name, &version).await?;
 
     pb.set_message("Locating .poly project...");
     let entries = fs::read_dir(".")?;
@@ -54,21 +78,23 @@ pub async fn install_package(package_query: &str) -> Result<String> {
 
     pb.set_message(format!(
         "Injecting {} into project",
-        Logger::highlight(name)
+        Logger::highlight(&name)
     ));
     let poly_content = fs::read_to_string(&poly_path)?;
-    let new_content = xml_handler::inject_module_script(&poly_content, name, &lua_code)?;
+    let new_content = xml_handler::inject_module_script(&poly_content, &name, &lua_code)?;
 
     fs::write(&poly_path, new_content)?;
     pb.finish_and_clear();
 
     Logger::success(format!(
-        "Installed {} into {}",
-        Logger::brand_text(name),
+        "Installed {}@{} into {}",
+        Logger::brand_text(&name),
+        Logger::brand_text(&version),
         Logger::highlight(poly_path.to_string_lossy())
     ));
 
-    Ok(name.to_string())
+    // Return the name and resolved version so main.rs can save it correctly
+    Ok((name, version))
 }
 
 pub async fn install_all() -> Result<()> {
@@ -80,7 +106,9 @@ pub async fn install_all() -> Result<()> {
 
     for (name, query) in &config.dependencies {
         Logger::command("mosaic", format!("Processing {} ({})", name, query));
-        install_package(query).await?;
+        // For install_all, we don't need to update config, just install what's there
+        // query is usually the version or source
+        let _ = install_package(&format!("{}@{}", name, query)).await?;
     }
 
     Logger::success("All dependencies are up to date!");

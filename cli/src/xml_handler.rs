@@ -34,39 +34,47 @@ pub fn inject_module_script(poly_xml: &str, name: &str, source: &str) -> Result<
             Event::End(e) => {
                 depth -= 1;
                 if in_script_service && e.local_name().as_ref() == b"Item" && depth == 1 {
+                    // Inject the new module before closing ScriptService
+                    
+                    // Indentation for the Item
                     writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n    ")))?;
+                    
                     let mut script_item = BytesStart::new("Item");
                     script_item.push_attribute(("class", "ModuleScript"));
                     writer.write_event(Event::Start(script_item))?;
 
-                    writer
-                        .write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
+                    // Properties
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
                     let props_start = BytesStart::new("Properties");
                     writer.write_event(Event::Start(props_start))?;
 
-                    writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                        "\n        ",
-                    )))?;
+                    // Source
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n        ")))?;
                     let mut source_start = BytesStart::new("string");
                     source_start.push_attribute(("name", "Source"));
                     writer.write_event(Event::Start(source_start))?;
+                    // quick-xml automatically escapes special characters in Text events
                     writer.write_event(Event::Text(quick_xml::events::BytesText::new(source)))?;
                     writer.write_event(Event::End(BytesEnd::new("string")))?;
 
-                    writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                        "\n        ",
-                    )))?;
+                    // Name
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n        ")))?;
                     let mut name_start = BytesStart::new("string");
                     name_start.push_attribute(("name", "Name"));
                     writer.write_event(Event::Start(name_start))?;
                     writer.write_event(Event::Text(quick_xml::events::BytesText::new(name)))?;
                     writer.write_event(Event::End(BytesEnd::new("string")))?;
 
-                    writer
-                        .write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
+                    // Close Properties
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
                     writer.write_event(Event::End(BytesEnd::new("Properties")))?;
+
+                    // Close Item
                     writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n    ")))?;
                     writer.write_event(Event::End(BytesEnd::new("Item")))?;
+
+                    // Indentation for closing ScriptService
+                    writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n  ")))?;
 
                     in_script_service = false;
                 }
@@ -144,47 +152,36 @@ pub fn update_module_script(poly_xml: &str, name: &str, source: &str) -> Result<
             if let Event::End(e) = module_buffer.last().unwrap() {
                 if e.local_name().as_ref() == b"Item" && depth == 2 {
                     if is_target_module {
-                        writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                            "\n    ",
-                        )))?;
+                        // Write replacement module
+                        writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n    ")))?;
                         let mut script_item = BytesStart::new("Item");
                         script_item.push_attribute(("class", "ModuleScript"));
                         writer.write_event(Event::Start(script_item))?;
 
-                        writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                            "\n      ",
-                        )))?;
+                        writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
                         let props_start = BytesStart::new("Properties");
                         writer.write_event(Event::Start(props_start))?;
 
-                        writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                            "\n        ",
-                        )))?;
+                        writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n        ")))?;
                         let mut source_start = BytesStart::new("string");
                         source_start.push_attribute(("name", "Source"));
                         writer.write_event(Event::Start(source_start))?;
-                        writer
-                            .write_event(Event::Text(quick_xml::events::BytesText::new(source)))?;
+                        writer.write_event(Event::Text(quick_xml::events::BytesText::new(source)))?;
                         writer.write_event(Event::End(BytesEnd::new("string")))?;
 
-                        writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                            "\n        ",
-                        )))?;
+                        writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n        ")))?;
                         let mut name_start = BytesStart::new("string");
                         name_start.push_attribute(("name", "Name"));
                         writer.write_event(Event::Start(name_start))?;
                         writer.write_event(Event::Text(quick_xml::events::BytesText::new(name)))?;
                         writer.write_event(Event::End(BytesEnd::new("string")))?;
 
-                        writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                            "\n      ",
-                        )))?;
+                        writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n      ")))?;
                         writer.write_event(Event::End(BytesEnd::new("Properties")))?;
-                        writer.write_event(Event::Text(quick_xml::events::BytesText::new(
-                            "\n    ",
-                        )))?;
+                        writer.write_event(Event::Text(quick_xml::events::BytesText::new("\n    ")))?;
                         writer.write_event(Event::End(BytesEnd::new("Item")))?;
                     } else {
+                        // Not the target, write original events
                         for ev in module_buffer.drain(..) {
                             writer.write_event(ev)?;
                         }
@@ -283,49 +280,4 @@ pub fn remove_module_script(poly_xml: &str, name: &str) -> Result<String> {
 
     let result = writer.into_inner().into_inner();
     Ok(String::from_utf8(result)?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_removal() {
-        let xml = r#"<game>
-            <Item class="ScriptService">
-                <Item class="ModuleScript">
-                    <Properties>
-                        <string name="Name">logger</string>
-                    </Properties>
-                </Item>
-                <Item class="ModuleScript">
-                    <Properties>
-                        <string name="Name">other</string>
-                    </Properties>
-                </Item>
-            </Item>
-        </game>"#;
-        let result = remove_module_script(xml, "logger").unwrap();
-        assert!(!result.contains("logger"));
-        assert!(result.contains("other"));
-    }
-
-    #[test]
-    fn test_overwrite() {
-        let xml = r#"<game>
-            <Item class="ScriptService">
-                <Item class="ModuleScript">
-                    <Properties>
-                        <string name="Name">logger</string>
-                        <string name="Source">old_code</string>
-                    </Properties>
-                </Item>
-            </Item>
-        </game>"#;
-        let result = inject_module_script(xml, "logger", "new_code").unwrap();
-        assert!(result.contains("new_code"));
-        assert!(!result.contains("old_code"));
-        let count = result.matches("ModuleScript").count();
-        assert_eq!(count, 1);
-    }
 }

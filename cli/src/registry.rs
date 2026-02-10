@@ -13,6 +13,7 @@ pub async fn login() -> Result<()> {
     let username = Text::new("Username:").prompt()?;
     let password = Password::new("Password:")
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
+        .without_confirmation()
         .prompt()?;
 
     Logger::info("Authenticating with registry...");
@@ -153,11 +154,12 @@ pub async fn search(query: String) -> Result<()> {
             Logger::error("No packages found.");
         } else {
             let mut table = Table::new();
-            table.set_header(vec!["Package", "Author", "Description"]);
+            table.set_header(vec!["Package", "Version", "Author", "Description"]);
 
             for pkg in packages {
                 table.add_row(vec![
                     pkg["name"].as_str().unwrap_or("unknown"),
+                    pkg["version"].as_str().unwrap_or("0.0.0"),
                     pkg["author"].as_str().unwrap_or("unknown"),
                     pkg["description"].as_str().unwrap_or("No description"),
                 ]);

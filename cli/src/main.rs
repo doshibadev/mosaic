@@ -39,11 +39,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Install { package } => {
             if let Some(query) = package {
-                let package_name = installer::install_package(query).await?;
+                let (package_name, resolved_version) = installer::install_package(query).await?;
 
                 // Try to load and update config
                 if let Ok(mut config) = config::Config::load() {
-                    config.add_dependency(&package_name, query);
+                    config.add_dependency(&package_name, &resolved_version);
                     config.save()?;
                     Logger::info(format!(
                         "Added {} to mosaic.toml",
