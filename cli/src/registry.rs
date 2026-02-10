@@ -19,7 +19,7 @@ pub async fn login() -> Result<()> {
 
     let client = reqwest::Client::new();
     let registry_url = std::env::var("MOSAIC_REGISTRY_URL")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        .unwrap_or_else(|_| "https://api.getmosaic.run".to_string());
 
     let response = client
         .post(format!("{}/auth/login", registry_url))
@@ -59,7 +59,7 @@ pub async fn search(query: String) -> Result<()> {
     let auth = AuthConfig::load()?;
     let registry_url = auth
         .registry_url
-        .unwrap_or_else(|| "http://localhost:3000".to_string());
+        .unwrap_or_else(|| "https://api.getmosaic.run".to_string());
 
     Logger::info(format!(
         "Searching registry for {}...",
@@ -194,7 +194,7 @@ pub async fn download_from_registry(name: &str, version: &str) -> Result<String>
     let auth = AuthConfig::load()?;
     let registry_url = auth
         .registry_url
-        .unwrap_or_else(|| "http://localhost:3000".to_string());
+        .unwrap_or_else(|| "https://api.getmosaic.run".to_string());
 
     let client = reqwest::Client::new();
 

@@ -5,7 +5,6 @@ manual_test/
 # Rust build artifacts
 target/
 **/*.rs.bk
-Cargo.lock
 
 # Mosaic CLI specific
 cli/mosaic.toml
