@@ -1,11 +1,14 @@
+pub mod auth;
 pub mod cli;
 pub mod config;
-pub mod github;
 pub mod installer;
+pub mod logger;
+pub mod registry;
 pub mod xml_handler;
 
 use clap::Parser;
 use cli::{Cli, Commands};
+use logger::Logger;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -13,16 +16,20 @@ async fn main() -> anyhow::Result<()> {
 
     match &cli.command {
         Commands::Init => {
+            Logger::banner();
             let current_dir = std::env::current_dir()?;
             let project_name = current_dir
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("my-mosaic-project");
 
-            println!("Initializing mosaic project: {}...", project_name);
+            Logger::info(format!(
+                "Initializing project: {}...",
+                Logger::highlight(project_name)
+            ));
             let config = config::Config::default(project_name);
             config.save()?;
-            println!("Created mosaic.toml");
+            Logger::success("Created mosaic.toml");
         }
         Commands::Install { package } => {
             if let Some(query) = package {
@@ -32,14 +39,34 @@ async fn main() -> anyhow::Result<()> {
                 if let Ok(mut config) = config::Config::load() {
                     config.add_dependency(&package_name, query);
                     config.save()?;
-                    println!("Updated mosaic.toml");
+                    Logger::info(format!(
+                        "Added {} to mosaic.toml",
+                        Logger::brand_text(&package_name)
+                    ));
                 }
             } else {
                 installer::install_all().await?;
             }
         }
+
         Commands::Remove { package } => {
             installer::remove_package(package).await?;
+        }
+        Commands::List => {
+            installer::list_packages().await?;
+        }
+        Commands::Update => {
+            installer::update_all().await?;
+        }
+        Commands::Login => {
+            Logger::banner();
+            registry::login().await?;
+        }
+        Commands::Publish { version } => {
+            registry::publish(version.as_deref()).await?;
+        }
+        Commands::Search { query } => {
+            registry::search(query.clone()).await?;
         }
     }
 
