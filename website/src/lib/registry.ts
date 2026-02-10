@@ -14,6 +14,7 @@ export async function searchPackages(query: string = ""): Promise<RegistryPackag
   try {
     const res = await fetch(`${REGISTRY_URL}/packages/search?q=${encodeURIComponent(query)}`, {
       next: { revalidate: 60 },
+      signal: AbortSignal.timeout(3000), // Fail fast if API is slow/down
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -31,6 +32,7 @@ export async function getPackage(name: string): Promise<RegistryPackage | null> 
   try {
     const res = await fetch(`${REGISTRY_URL}/packages/${encodeURIComponent(name)}`, {
       next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(3000), // Fail fast if API is slow/down
     });
 
     if (!res.ok) return null;
