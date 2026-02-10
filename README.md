@@ -1,138 +1,126 @@
-# Mosaic
-
 <div align="center">
 
-<img src="./assets/logo.png" alt="Mosaic Logo" width="200"/>
+<img src="./assets/logo.png" alt="Mosaic" width="120" />
 
-**The official package manager for Polytoria game development.**
+# mosaic
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/Built%20with-Rust-9b3b7d)](https://www.rust-lang.org/)
-[![Status: MVP](https://img.shields.io/badge/Status-MVP-0eaddd)](https://github.com/yourusername/mosaic)
+A package manager for [Polytoria](https://polytoria.com).
 
-[Quick Start](#quick-start) • [Features](#features) • [CLI Reference](#cli-reference) • [Registry](#registry)
+[![MIT License](https://img.shields.io/badge/license-MIT-a78bfa?style=flat-square)](LICENSE)
+[![Built with Rust](https://img.shields.io/badge/rust-1.75+-e8e0f0?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 
 </div>
 
 ---
 
-Mosaic is a content-addressable package manager for Polytoria. It orchestrates Lua modules directly into `.poly` project files, providing a seamless, versioned development experience.
+Mosaic lets you install, manage, and share Lua packages for Polytoria projects. It works like [Cargo](https://crates.io) or [npm](https://www.npmjs.com) — but for Polytoria's XML-based project format.
 
----
+There are two parts:
 
-## ⚡ Quick Start
+- **`mosaic` CLI** — the command-line tool you use to manage packages
+- **Registry** — the server that hosts and serves packages
+
+Most people only need the CLI. Both are in this repo.
+
+## Getting started
 
 ```bash
-# Login to the Registry
-mosaic login
+# Install the CLI
+cargo install mosaic-cli
 
-# Initialize your project
+# Set up a new project
 mosaic init
 
-# Install a package from the Registry
-mosaic install logger@1.0.0
+# Log in to the registry
+mosaic login
 
-# Publish your own package
-mosaic publish
+# Add a package
+mosaic install logger@1.0.0
 ```
 
-In Polytoria Creator, your modules are automatically injected into `ScriptService`:
+Mosaic injects packages as ModuleScripts into your `.poly` file. Use them like this:
 
 ```lua
 local Logger = require(game["ScriptService"]["logger"])
-Logger:info("Mosaic is online!")
+Logger:info("hey, it works")
 ```
 
----
+## Commands
 
-## ✨ Features
+| Command          | What it does                           |
+| ---------------- | -------------------------------------- |
+| `mosaic init`    | Create a `mosaic.toml` in your project |
+| `mosaic login`   | Authenticate with the registry         |
+| `mosaic install` | Install a package (`name@version`)     |
+| `mosaic search`  | Search the registry                    |
+| `mosaic list`    | Show installed packages                |
+| `mosaic publish` | Upload your package to the registry    |
+| `mosaic remove`  | Uninstall a package                    |
 
-- **🚀 Native Registry** — High-performance package discovery powered by SurrealDB.
-- **📦 Content-Addressable Storage** — Secure blob storage on Cloudflare R2 with SHA256 verification.
-- **🎨 Premium CLI** — Polished TrueColor aesthetics, rich tables, and clear progress indicators.
-- **🛠️ Zero-Friction** — No build steps. Injects ModuleScripts directly into Polytoria XML.
-- **🔐 Secure Auth** — JWT-based authentication for publishers.
-- **🧹 Single Source of Truth** — Registry-centric model for maximum reliability.
+## How it works
 
----
-
-## 🛠️ How It Works
-
-Mosaic bridges the gap between the Lua ecosystem and Polytoria's XML-based project format using a modern, distributed architecture.
-
-```mermaid
-graph TD
-    A[Mosaic CLI] -->|Login| B(Registry API)
-    B -->|Metadata| C[(SurrealDB)]
-    A -->|Publish| D[Cloudflare R2]
-    A -->|Install| E[.poly Project File]
-    E -->|Inject| F[ModuleScripts]
-    F -->|Require| G[Game Logic]
-
-    style A fill:#7d3b9b,stroke:#fff,stroke-width:2px,color:#fff
-    style B fill:#0eaddd,stroke:#fff,stroke-width:2px,color:#fff
-    style D fill:#173a60,stroke:#fff,stroke-width:2px,color:#fff
+```
+  You                    Mosaic CLI                Registry                  Storage
+   │                        │                        │                         │
+   ├── mosaic install ──────►                        │                         │
+   │                        ├── resolve version ────►│                         │
+   │                        │◄── metadata ───────────┤                         │
+   │                        ├── download blob ───────┼────────────────────────►│
+   │                        │◄── lua source ─────────┼─────────────────────────┤
+   │                        ├── inject into .poly    │                         │
+   │◄── done ───────────────┤                        │                         │
 ```
 
-1. **Mosaic CLI** — Your entry point for all package management tasks.
-2. **Registry API** — Handles authentication, package registration, and discovery.
-3. **SurrealDB** — Stores package metadata, owners, and version history.
-4. **Cloudflare R2** — Securely hosts packaged Lua blobs.
+1. CLI resolves the package version against the registry API
+2. Downloads the Lua source from Cloudflare R2 (verified with SHA256)
+3. Injects it as a ModuleScript into your Polytoria project file
+4. Updates `mosaic.toml` with the new dependency
 
----
+## Project layout
 
-## 🖥️ CLI Reference
-
-| Command          | Description                                      |
-| ---------------- | ------------------------------------------------ |
-| `mosaic init`    | Create a `mosaic.toml` in the current directory. |
-| `mosaic login`   | Authenticate with the Mosaic Registry.           |
-| `mosaic install` | Download and inject a package (`name@version`).  |
-| `mosaic search`  | Find packages in the Registry.                   |
-| `mosaic list`    | View installed dependencies.                     |
-| `mosaic publish` | Package and upload your project to the Registry. |
-| `mosaic remove`  | Cleanly uninstall a package from project & XML.  |
-
----
-
-## 🧱 Project Structure
-
-```text
+```
 mosaic/
-├── cli/            # Rust-based CLI source code
-├── registry/       # Axum API + SurrealDB backend
-├── research/       # Experimental scripts and test data
-└── assets/         # Brand assets and logos
+├── cli/          # Rust CLI
+├── registry/     # Axum API server (SurrealDB + R2)
+├── website/      # Next.js website & package browser
+├── research/     # Experiments and test data
+└── assets/       # Logo and brand stuff
 ```
 
----
-
-## 🏗️ Development Setup
+## Building from source
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/mosaic.git
+git clone https://github.com/doshibadev/mosaic.git
 cd mosaic
 
 # Build the CLI
 cd cli
 cargo build --release
 
-# Run the API (Requires SurrealDB & Cloudflare R2 credentials)
+# Run the registry (needs SurrealDB + R2 credentials)
 cd ../registry
 cargo run
 ```
 
+## Stack
+
+- **CLI**: Rust (clap, reqwest, quick-xml)
+- **Registry**: Rust (Axum, SurrealDB, Cloudflare R2)
+- **Website**: Next.js, Tailwind CSS
+- **Auth**: JWT
+
+## Status
+
+Mosaic is early but functional. The core loop works — you can init, install, publish, and remove packages. There's still rough edges and missing features, but it's usable if you're building on Polytoria and want something better than copy-pasting scripts.
+
+If you run into problems, [open an issue](https://github.com/doshibadev/mosaic/issues).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ---
 
-## 🛤️ Roadmap
-
-- [x] **Phase 1**: CLI core (XML Injection & Dependencies)
-- [x] **Phase 2**: Registry API MVP (JWT, SurrealDB, R2)
-- [x] **Phase 3**: CLI & Registry Integration
-- [x] **Phase 5**: Premium UX & brand-consistent Polish
-- [ ] **Phase 4**: Website discovery UI & Landing Page (Coming Soon)
-
----
-
-**Made with ❤️ for the Polytoria community**
+<div align="center">
+<sub>made for the polytoria community</sub>
+</div>

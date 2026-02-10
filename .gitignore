@@ -29,3 +29,18 @@ test_xml_result.xml
 test_output.txt
 debug_*.txt
 *.log
+
+# Website (Next.js)
+node_modules/
+.next/
+web-build/
+website/out/
+website/build/
+.turbo/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*

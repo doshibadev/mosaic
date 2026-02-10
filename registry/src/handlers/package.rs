@@ -12,6 +12,28 @@ use semver::Version;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+/// Fetches the latest version string for a given package from the package_version table.
+async fn get_latest_version(state: &AppState, pkg: &Package) -> String {
+    let Some(ref pkg_id) = pkg.id else {
+        return "0.0.0".to_string();
+    };
+
+    let versions: Vec<PackageVersion> = match state
+        .db
+        .query("SELECT * FROM package_version WHERE package_id = $pkg_id ORDER BY created_at DESC LIMIT 1")
+        .bind(("pkg_id", pkg_id.clone()))
+        .await
+    {
+        Ok(mut res) => res.take(0).unwrap_or(vec![]),
+        Err(_) => vec![],
+    };
+
+    versions
+        .first()
+        .map(|v| v.version.clone())
+        .unwrap_or_else(|| "0.0.0".to_string())
+}
+
 pub async fn list_packages(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
     let packages: Vec<Package> = match state.db.select("package").await {
         Ok(p) => p,
@@ -23,39 +45,68 @@ pub async fn list_packages(State(state): State<AppState>) -> (StatusCode, Json<s
         }
     };
 
-    (StatusCode::OK, Json(json!(packages)))
+    let mut results = Vec::new();
+    for pkg in &packages {
+        let version = get_latest_version(&state, pkg).await;
+        results.push(json!({
+            "name": pkg.name,
+            "description": pkg.description,
+            "author": pkg.author,
+            "version": version,
+            "repository": pkg.repository,
+        }));
+    }
+
+    (StatusCode::OK, Json(json!(results)))
 }
 
 pub async fn search_packages(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let q = match params.get("q") {
-        Some(v) => v,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Missing search query 'q'"})),
-            );
+    let q = params.get("q").map(|s| s.as_str()).unwrap_or("");
+
+    // If query is empty, return all packages
+    let packages: Vec<Package> = if q.is_empty() {
+        match state.db.select("package").await {
+            Ok(p) => p,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("DB error: {}", e)})),
+                );
+            }
+        }
+    } else {
+        match state
+            .db
+            .query("SELECT * FROM package WHERE name @1@ $q OR description @1@ $q")
+            .bind(("q", q.to_string()))
+            .await
+        {
+            Ok(mut res) => res.take(0).unwrap_or(vec![]),
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("DB error: {}", e)})),
+                );
+            }
         }
     };
 
-    let packages: Vec<Package> = match state
-        .db
-        .query("SELECT * FROM package WHERE name @1@ $q OR description @1@ $q")
-        .bind(("q", q.clone()))
-        .await
-    {
-        Ok(mut res) => res.take(0).unwrap_or(vec![]),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("DB error: {}", e)})),
-            );
-        }
-    };
+    let mut results = Vec::new();
+    for pkg in &packages {
+        let version = get_latest_version(&state, pkg).await;
+        results.push(json!({
+            "name": pkg.name,
+            "description": pkg.description,
+            "author": pkg.author,
+            "version": version,
+            "repository": pkg.repository,
+        }));
+    }
 
-    (StatusCode::OK, Json(json!(packages)))
+    (StatusCode::OK, Json(json!(results)))
 }
 
 pub async fn get_package(

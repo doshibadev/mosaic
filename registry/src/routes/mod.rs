@@ -11,8 +11,14 @@ use axum::{
     Router,
     routing::{get, post},
 };
+use tower_http::cors::{Any, CorsLayer};
 
 pub fn create_routes(state: AppState) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     let auth_routes = Router::new()
         .route("/signup", post(signup))
         .route("/login", post(login));
@@ -31,5 +37,6 @@ pub fn create_routes(state: AppState) -> Router {
         .route("/health", get(health_check))
         .nest("/auth", auth_routes)
         .nest("/packages", package_routes)
+        .layer(cors)
         .with_state(state)
 }
