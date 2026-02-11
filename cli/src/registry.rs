@@ -313,7 +313,8 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "version": version,
-            "lua_source_url": "tbd" // Will be updated after upload
+            "lua_source_url": "tbd", // Will be updated after upload
+            "dependencies": config.dependencies // Send dependencies to registry
         }))
         .send()
         .await?;
@@ -353,7 +354,8 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
                 .header("Authorization", format!("Bearer {}", token))
                 .json(&json!({
                     "version": version,
-                    "lua_source_url": "tbd"
+                    "lua_source_url": "tbd",
+                    "dependencies": config.dependencies
                 }))
                 .send()
                 .await?;

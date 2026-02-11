@@ -124,5 +124,16 @@ pub async fn connect() -> Result<DB> {
     .execute(&pool)
     .await?;
 
+    // 8. Dependencies Column
+    // We store dependencies as JSONB because it's flexible and Postgres handles it well.
+    // Each entry is a map of "package-name": "version-requirement".
+    let _ = sqlx::query(
+        r#"
+        ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS dependencies JSONB NOT NULL DEFAULT '{}'::jsonb;
+    "#,
+    )
+    .execute(&pool)
+    .await;
+
     Ok(pool)
 }

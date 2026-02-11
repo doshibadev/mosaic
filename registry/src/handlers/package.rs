@@ -361,8 +361,8 @@ pub async fn create_version(
     // Create the version record. lua_source_url will be updated later when the blob is uploaded.
     let created_version = sqlx::query_as::<_, PackageVersion>(
         r#"
-        INSERT INTO package_versions (package_id, version, lua_source_url, created_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO package_versions (package_id, version, lua_source_url, created_at, dependencies)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *
         "#,
     )
@@ -370,6 +370,7 @@ pub async fn create_version(
     .bind(payload.version)
     .bind(payload.lua_source_url)
     .bind(now)
+    .bind(serde_json::to_value(&payload.dependencies).unwrap_or(json!({})))
     .fetch_one(&state.db)
     .await;
 

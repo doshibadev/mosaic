@@ -4,13 +4,35 @@ use crate::xml_handler;
 use anyhow::{Result, anyhow};
 use comfy_table::Table;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
-/// Installs a package into the current project.
+/// Installs a package into the current project, including all its dependencies.
 ///
 /// Handles both explicit versions (name@version) and latest-version lookup.
 /// Returns the resolved (name, version) tuple so main.rs can update mosaic.toml.
 pub async fn install_package(package_query: &str) -> Result<(String, String)> {
+    let mut visited = HashSet::new();
+    let mut recursion_stack = Vec::new();
+
+    // We start the recursive process.
+    // The first package is the one the user explicitly requested.
+    let (name, version) = resolve_and_install(package_query, &mut visited, &mut recursion_stack).await?;
+
+    Ok((name, version))
+}
+
+/// The recursive engine behind install_package.
+///
+/// 1. Resolves version
+/// 2. Checks for circular dependencies (DFS)
+/// 3. Installs dependencies first
+/// 4. Injects the package itself
+async fn resolve_and_install(
+    package_query: &str,
+    visited: &mut HashSet<String>,
+    recursion_stack: &mut Vec<String>,
+) -> Result<(String, String)> {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
         ProgressStyle::default_spinner()
@@ -20,9 +42,7 @@ pub async fn install_package(package_query: &str) -> Result<(String, String)> {
     pb.set_message(format!("Resolving {}", Logger::highlight(package_query)));
     pb.enable_steady_tick(std::time::Duration::from_millis(120));
 
-    // Parse the package query. Two formats:
-    // - name@version (explicit, faster)
-    // - name (needs a registry call to get the latest version)
+    // 1. Resolve Name & Version
     let (name, version) = if package_query.contains('@') {
         let parts: Vec<&str> = package_query.split('@').collect();
         if parts.len() != 2 {
@@ -33,8 +53,6 @@ pub async fn install_package(package_query: &str) -> Result<(String, String)> {
         }
         (parts[0].to_string(), parts[1].to_string())
     } else {
-        // No version specified—hit the registry for the latest one.
-        // This adds a network call but it's worth it for convenience.
         pb.set_message(format!(
             "Fetching latest version for {}...",
             Logger::highlight(package_query)
@@ -62,17 +80,64 @@ pub async fn install_package(package_query: &str) -> Result<(String, String)> {
         (package_query.to_string(), latest_version)
     };
 
+    // 2. Circular Dependency Check (DFS)
+    // If we're already installing this package in the current branch of the tree, it's a cycle.
+    if recursion_stack.contains(&name) {
+        pb.finish_and_clear();
+        let mut cycle = recursion_stack.join(" -> ");
+        cycle.push_str(&format!(" -> {}", name));
+        return Err(anyhow!("Circular dependency detected: {}", cycle));
+    }
+
+    // 3. Skip if already visited
+    // No need to install the same package twice if multiple dependencies point to it.
+    if visited.contains(&name) {
+        pb.finish_and_clear();
+        return Ok((name, version));
+    }
+
+    // Mark as currently visiting
+    recursion_stack.push(name.clone());
+
+    // 4. Fetch Metadata & Dependencies
+    // We need to know what this package depends on BEFORE we download the blob.
+    let registry_url = std::env::var("MOSAIC_REGISTRY_URL")
+        .unwrap_or_else(|_| "https://api.getmosaic.run".to_string());
+    
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!("{}/packages/{}/versions", registry_url, name))
+        .send()
+        .await?;
+
+    let versions: Vec<serde_json::Value> = res.json().await?;
+    let version_meta = versions
+        .into_iter()
+        .find(|v| v["version"].as_str() == Some(&version))
+        .ok_or_else(|| anyhow!("Version {} not found for {}", version, name))?;
+
+    // Extract dependencies if any
+    if let Some(deps) = version_meta["dependencies"].as_object() {
+        if !deps.is_empty() {
+            pb.set_message(format!("Installing dependencies for {}...", name));
+            for (dep_name, dep_version) in deps {
+                let dep_query = format!("{}@{}", dep_name, dep_version.as_str().unwrap_or("*"));
+                // Recursively call ourselves. This builds the tree bottom-up.
+                Box::pin(resolve_and_install(&dep_query, visited, recursion_stack)).await?;
+            }
+        }
+    }
+
+    // 5. Download & Inject
     pb.set_message(format!(
-        "Downloading {}@{} from Registry...",
+        "Downloading {}@{}...",
         Logger::highlight(&name),
         Logger::brand_text(&version)
     ));
 
     let lua_code = registry::download_from_registry(&name, &version).await?;
 
-    // Find the .poly file. We assume there's only one in the project root.
-    // If someone has multiple .poly files, they're on their own.
-    pb.set_message("Locating .poly project...");
+    // Find the .poly file.
     let entries = fs::read_dir(".")?;
     let mut poly_file_path = None;
     for entry in entries {
@@ -92,18 +157,17 @@ pub async fn install_package(package_query: &str) -> Result<(String, String)> {
         }
     };
 
-    // Inject the package as a ModuleScript into the .poly XML.
-    // This is where the magic happens—xml_handler knows how to insert it correctly.
-    pb.set_message(format!(
-        "Injecting {} into project",
-        Logger::highlight(&name)
-    ));
+    pb.set_message(format!("Injecting {} into project...", name));
     let poly_content = fs::read_to_string(&poly_path)?;
     let new_content = xml_handler::inject_module_script(&poly_content, &name, &lua_code)?;
 
     fs::write(&poly_path, new_content)?;
+    
+    // Done with this branch
+    visited.insert(name.clone());
+    recursion_stack.pop();
+    
     pb.finish_and_clear();
-
     Logger::success(format!(
         "Installed {}@{} into {}",
         Logger::brand_text(&name),
@@ -111,8 +175,6 @@ pub async fn install_package(package_query: &str) -> Result<(String, String)> {
         Logger::highlight(poly_path.to_string_lossy())
     ));
 
-    // Return name and version so the caller can update mosaic.toml with the resolved version.
-    // Important: we return what we *actually* installed, not what the user requested.
     Ok((name, version))
 }
 

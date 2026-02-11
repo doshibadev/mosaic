@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -23,11 +24,18 @@ pub struct PackageVersion {
     pub lua_source_url: String,
     pub readme: Option<String>,
     pub created_at: i64,
+    pub dependencies: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PublishVersionRequest {
     pub version: String,
     pub lua_source_url: String,
+    #[serde(default = "empty_deps")]
+    pub dependencies: HashMap<String, String>,
+}
+
+fn empty_deps() -> HashMap<String, String> {
+    HashMap::new()
 }
 
