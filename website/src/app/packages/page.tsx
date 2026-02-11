@@ -8,7 +8,7 @@ import { searchPackages, type RegistryPackage } from "@/lib/registry";
 
 function PackagesContent() {
   const searchParams = useSearchParams();
-  const initialQuery = searchParams.get("q") || "";
+  const initialQuery = searchParams?.get("q") || "";
   const [query, setQuery] = useState(initialQuery);
   const [packages, setPackages] = useState<RegistryPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);

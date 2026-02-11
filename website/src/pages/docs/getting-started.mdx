@@ -1,0 +1,42 @@
+# Getting Started
+
+Learn how to get up and running with Mosaic in minutes.
+
+## Installation
+
+Currently, Mosaic is in early development. You can install the CLI from source:
+
+```bash
+git clone https://github.com/doshibadev/mosaic.git
+cd mosaic/cli
+cargo install --path .
+```
+
+## Quick Start
+
+### 1. Initialize your project
+
+Go to your Polytoria project folder and run:
+
+```bash
+mosaic init
+```
+
+This will create a `mosaic.toml` file.
+
+### 2. Install a package
+
+Try installing the `logger` package:
+
+```bash
+mosaic install logger
+```
+
+### 3. Use the package in Lua
+
+In your Polytoria script, you can now require the package:
+
+```lua
+local Logger = require(game.ScriptService.logger)
+Logger.info("Hello from Mosaic!")
+```
