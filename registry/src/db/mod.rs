@@ -110,5 +110,19 @@ pub async fn connect() -> Result<DB> {
     .execute(&pool)
     .await;
 
+    // 7. Revoked Tokens Table
+    // Used for server-side logout. We store the JTI (JWT ID) of revoked tokens.
+    // They only need to stay here until they naturally expire.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS revoked_tokens (
+            jti UUID PRIMARY KEY,
+            expires_at BIGINT NOT NULL
+        )
+    "#,
+    )
+    .execute(&pool)
+    .await?;
+
     Ok(pool)
 }

@@ -1,31 +1,33 @@
 use crate::models::user::Claims;
+use crate::state::AppState;
 use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
 };
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use std::env;
+use uuid::Uuid;
 
 /// Represents an authenticated user extracted from the JWT.
 ///
 /// Use this as a handler parameter and Axum will automatically:
 /// 1. Extract the Authorization header
 /// 2. Verify the JWT signature
-/// 3. Return AuthenticatedUser if valid, or 401 if not
+/// 3. Check if the token has been revoked (server-side logout)
+/// 4. Return AuthenticatedUser if valid, or 401 if not
 ///
 /// Makes authorization super convenient—just add `user: AuthenticatedUser` to your handler.
 pub struct AuthenticatedUser {
     pub user_id: String,
     pub username: String,
+    pub jti: Uuid,
+    pub exp: i64,
 }
 
-impl<S> FromRequestParts<S> for AuthenticatedUser
-where
-    S: Send + Sync,
-{
+impl FromRequestParts<AppState> for AuthenticatedUser {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         // 1. Extract token from Authorization header
         // Expected format: "Bearer <token>"
         // We use and_then to chain the operations and fail gracefully if any step doesn't work.
@@ -59,9 +61,24 @@ where
         )
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid or expired token"))?;
 
+        // 3. Check for revocation (server-side logout)
+        // We query the DB to see if this specific JTI is blacklisted.
+        // This makes logout real, not just a client-side illusion.
+        let revoked = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM revoked_tokens WHERE jti = $1")
+            .bind(token_data.claims.jti)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
+
+        if revoked > 0 {
+            return Err((StatusCode::UNAUTHORIZED, "Token has been revoked"));
+        }
+
         Ok(AuthenticatedUser {
             user_id: token_data.claims.sub,
             username: token_data.claims.username,
+            jti: token_data.claims.jti,
+            exp: token_data.claims.exp,
         })
     }
 }

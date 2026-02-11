@@ -1,3 +1,4 @@
+use crate::middleware::auth::AuthenticatedUser;
 use crate::models::user::{AuthResponse, Claims, LoginRequest, SignupRequest, User};
 use crate::state::AppState;
 use crate::utils::auth::{hash_password, verify_password};
@@ -85,16 +86,20 @@ pub async fn signup(
     // 4. Generate JWT
     // 7-day expiration because that's a reasonable default.
     // Users will have to log back in after a week, which is fine for a package manager.
+    // We also generate a JTI so we can revoke it later if needed.
     let secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(7))
         .expect("valid timestamp")
         .timestamp();
+        
+    let jti = Uuid::new_v4();
 
     let claims = Claims {
         sub: user.id.map(|id| id.to_string()).unwrap_or_default(),
         username: user.username.clone(),
         exp: expiration,
+        jti,
     };
 
     let token = match encode(
@@ -182,10 +187,13 @@ pub async fn login(
         .expect("valid timestamp")
         .timestamp();
 
+    let jti = Uuid::new_v4();
+
     let claims = Claims {
         sub: user.id.map(|id| id.to_string()).unwrap_or_default(),
         username: user.username.clone(),
         exp: expiration,
+        jti,
     };
 
     let token = match encode(
@@ -209,4 +217,33 @@ pub async fn login(
             username: user.username,
         })),
     )
+}
+
+/// Invalidates the current user's token.
+///
+/// This adds the token's JTI to the revoked_tokens table.
+/// The middleware checks this table on every request.
+/// This allows us to have a "real" logout instead of just "delete from local storage".
+pub async fn logout(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> (StatusCode, Json<serde_json::Value>) {
+    // Insert JTI into revoked_tokens.
+    // We store the expiry too so a cleanup job can remove it later (not implemented yet, but good practice).
+    let result = sqlx::query("INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2)")
+        .bind(user.jti)
+        .bind(user.exp)
+        .execute(&state.db)
+        .await;
+
+    match result {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({"message": "Logged out successfully"})),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Logout failed: {}", e)})),
+        ),
+    }
 }

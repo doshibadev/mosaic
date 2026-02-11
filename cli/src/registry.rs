@@ -141,7 +141,24 @@ pub async fn signup() -> Result<()> {
 }
 
 /// Clears all credentials from disk and keyring.
+/// Also tells the server to invalidate the token so it can't be used anymore.
 pub async fn logout() -> Result<()> {
+    let auth = AuthConfig::load()?;
+
+    // If we have a token, tell the server we're done with it.
+    // This "completes the circle" so the token is actually revoked on the registry.
+    if let (Some(token), Some(url)) = (auth.token, auth.registry_url) {
+        Logger::info("Invalidating session on registry...");
+        let client = reqwest::Client::new();
+        let _ = client
+            .post(format!("{}/auth/logout", url))
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await;
+        // We ignore the result here because if the server is down, we still 
+        // want to delete the local credentials anyway.
+    }
+
     AuthConfig::logout()?;
     Logger::success("Logged out successfully.");
     Ok(())

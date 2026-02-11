@@ -1,5 +1,5 @@
 use crate::handlers::{
-    auth::{login, signup},
+    auth::{login, logout, signup},
     health::health_check,
     package::{
         create_package, create_version, download_blob, get_package, list_packages, list_versions,
@@ -33,7 +33,8 @@ pub fn create_routes(state: AppState) -> Router {
         .route(
             "/login", 
             post(login.layer(GovernorLayer::new(login_conf)))
-        );
+        )
+        .route("/logout", post(logout));
 
     let package_routes = Router::new()
         .route("/", get(list_packages))
