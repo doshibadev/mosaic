@@ -1,8 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Github, Terminal } from "lucide-react";
+import { ArrowRight, Github } from "lucide-react";
 import { searchPackages } from "@/lib/registry";
 import { Suspense } from "react";
+import { InstallCommand } from "@/components/install-command";
 
 export default function HomePage() {
   return (
@@ -29,25 +30,9 @@ export default function HomePage() {
             </Link>
           </p>
 
-          {/* Install command — the main thing */}
-          <div className="bg-card border border-border rounded-lg p-6 mb-10 max-w-xl mx-auto text-left">
-            <div className="flex items-center gap-2 text-muted-foreground/50 text-base mb-4">
-              <Terminal className="h-5 w-5" />
-              <span>Get started</span>
-            </div>
-            <div className="font-mono text-lg space-y-2">
-              <div>
-                <span className="text-muted-foreground/50 select-none">$ </span>
-                <span className="text-foreground">cargo install mosaic-cli</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground/50 select-none">$ </span>
-                <span className="text-foreground">mosaic init</span>
-              </div>
-            </div>
-          </div>
+          <InstallCommand />
 
-          <div className="flex gap-4 justify-center flex-wrap">
+          <div className="flex gap-4 justify-center flex-wrap mt-10">
             <Link
               href="/docs/getting-started"
               className="inline-flex h-12 items-center gap-2 rounded-lg bg-primary text-primary-foreground px-7 text-base font-medium hover:bg-primary/90 transition-colors"
