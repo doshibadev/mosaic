@@ -28,3 +28,4 @@ zip = "7.4.0"
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "time", "uuid"] }
 tower_governor = "0.8.0"
 governor = "0.10.4"
+regex = "1.12.3"

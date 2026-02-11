@@ -220,6 +220,14 @@ pub async fn create_package(
     user: AuthenticatedUser,
     Json(payload): Json<Package>,
 ) -> (StatusCode, Json<serde_json::Value>) {
+    // 0. Validate package name strictly
+    if let Err(e) = crate::utils::validation::validate_package_name(&payload.name) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": e})),
+        );
+    }
+
     // Check if package with this name already exists
     let existing: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM packages WHERE name = $1")
         .bind(&payload.name)
