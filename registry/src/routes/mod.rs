@@ -11,6 +11,7 @@ use crate::state::AppState;
 use axum::{
     Router,
     handler::Handler,
+    extract::DefaultBodyLimit,
     routing::{get, post},
 };
 use tower_governor::GovernorLayer;
@@ -53,7 +54,13 @@ pub fn create_routes(state: AppState) -> Router {
         )
         .route(
             "/{name}/versions/{version}/upload", 
-            post(upload_blob.layer(GovernorLayer::new(publish_conf.clone())))
+            // 5MB limit. Lua scripts are tiny text files. 
+            // If you're uploading 5MB of text, you're doing something wrong.
+            // This stops someone from nuking our R2 bandwidth.
+            post(upload_blob
+                .layer(DefaultBodyLimit::max(5 * 1024 * 1024))
+                .layer(GovernorLayer::new(publish_conf.clone()))
+            )
         );
 
     Router::new()
