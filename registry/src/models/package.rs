@@ -11,6 +11,8 @@ pub struct Package {
     pub repository: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+    #[serde(default)] 
+    pub download_count: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]

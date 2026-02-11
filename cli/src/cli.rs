@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+/// Main CLI entry point. Pretty straightforward—parse args and dispatch to subcommands.
+/// The `#[command(subcommand)]` macro does most of the heavy lifting for us.
 #[derive(Parser)]
 #[command(name = "mosaic")]
 #[command(about = "Polytoria Package Manager", long_about = None)]
@@ -7,41 +9,65 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// Override the registry API URL
+    /// Let users override the registry URL if they're running their own instance.
+    /// Useful for testing or if someone wants to self-host the registry.
+    /// `global = true` means it works with any subcommand.
     #[arg(long, global = true)]
     pub api_url: Option<String>,
 }
 
+/// Every command the CLI supports. Pretty much what you'd expect from a package manager.
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Initialize a new mosaic project
+    /// Sets up mosaic.toml in the current directory.
+    /// Nothing fancy—just scaffolds the config file.
     Init,
-    /// Install a package
+
+    /// Install a package. Can handle:
+    /// - Registry packages: `logger@1.0.0`
+    /// - GitHub repos: `github:username/repo` (might add this someday)
     Install {
         /// Package name (e.g. logger@1.0.0 or github:user/repo)
         package: Option<String>,
     },
-    /// Remove a package
+
+    /// Removes a package from mosaic.toml and from your .poly file.
+    /// Just deletes the dependency, nothing complicated.
     Remove {
         /// Package name to remove
         package: String,
     },
-    /// List all installed packages
+
+    /// Lists everything installed. Reads from mosaic.toml.
+    /// Useful if you forget what you added.
     List,
-    /// Update all installed packages
+
+    /// Updates all packages to their latest versions.
+    /// Respects version constraints (if we implement those someday).
     Update,
-    /// Login to the Mosaic Registry
+
+    /// Logs you in. Stores credentials securely (hopefully).
+    /// Prompts for username/password and stashes the token in the system keyring.
     Login,
-    /// Log out and clear credentials
+
+    /// Removes your stored credentials everywhere.
+    /// Keyring + config file. You're fully logged out after this.
     Logout,
-    /// Create a new account on the Mosaic Registry
+
+    /// Creates a new account on the registry.
+    /// Just a convenience wrapper around the API endpoint.
     Signup,
-    /// Publish a package to the Mosaic Registry
+
+    /// Publishes your package to the registry.
+    /// Reads from mosaic.toml unless you override the version.
     Publish {
         /// Optional version string (defaults to mosaic.toml version)
+        /// Useful if you want to bump the version from the CLI instead of editing the file.
         version: Option<String>,
     },
-    /// Search for packages in the Mosaic Registry
+
+    /// Searches the registry for packages.
+    /// Pretty basic—just a text query. Fuzzy matching would be nice but... someday.
     Search {
         /// Search query
         query: String,

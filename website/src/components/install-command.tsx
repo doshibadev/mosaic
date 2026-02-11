@@ -4,18 +4,25 @@ import { useState, useEffect } from "react";
 import { Check, Copy, Terminal } from "lucide-react";
 
 export function InstallCommand() {
-  const [command, setCommand] = useState("curl -fsSL https://getmosaic.run/install.sh | sh");
   const [os, setOs] = useState<"unix" | "windows">("unix");
   const [copied, setCopied] = useState(false);
 
+  // Derive the command from the OS state
+  const command = os === "windows" 
+    ? "irm https://getmosaic.run/install.ps1 | iex" 
+    : "curl -fsSL https://getmosaic.run/install.sh | sh";
+
+  // Detect the user's OS on mount.
   useEffect(() => {
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    if (userAgent.includes("win")) {
-      setOs("windows");
-      setCommand("irm https://getmosaic.run/install.ps1 | iex");
+    const isWin = window.navigator.userAgent.toLowerCase().includes("win");
+    if (isWin) {
+      // Use setTimeout to avoid synchronous state update warning during hydration
+      setTimeout(() => setOs("windows"), 0);
     }
   }, []);
 
+  // Copy to clipboard and show a brief success indicator.
+  // The icon changes to a checkmark for 2 seconds, then reverts.
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(command);
@@ -28,6 +35,7 @@ export function InstallCommand() {
 
   return (
     <div className="w-full max-w-lg mx-auto mt-8">
+      {/* Gradient border effect using pseudo-elements. The blur creates that glowing look. */}
       <div className="relative group">
         <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-secondary rounded-lg blur opacity-30 group-hover:opacity-50 transition duration-200"></div>
         <div className="relative flex items-center bg-card border border-border rounded-lg p-1 pr-2 shadow-xl">
@@ -54,13 +62,8 @@ export function InstallCommand() {
         Detected {os === "windows" ? "Windows" : "macOS/Linux"}.{" "}
         <button
           onClick={() => {
-            const newOs = os === "windows" ? "unix" : "windows";
-            setOs(newOs);
-            setCommand(
-              newOs === "windows"
-                ? "irm https://getmosaic.run/install.ps1 | iex"
-                : "curl -fsSL https://getmosaic.run/install.sh | sh"
-            );
+            // Let users manually switch OS if auto-detection got it wrong.
+            setOs(os === "windows" ? "unix" : "windows");
           }}
           className="underline hover:text-foreground transition-colors"
         >

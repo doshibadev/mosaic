@@ -8,8 +8,14 @@ pub struct HealthResponse {
     pub database: String,
 }
 
+/// Simple health check endpoint.
+///
+/// Used by load balancers and monitoring to know if the registry is still alive.
+/// We ping the database to make sure the connection pool is working—if DB is down,
+/// the whole registry is useless anyway.
 pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
-    // Check if DB is alive using simple query
+    // Hit the database with a dummy query. `SELECT 1` is the fastest way to check if it's responsive.
+    // If this fails, the DB is either down or the connection pool is maxed out.
     let db_status = if sqlx::query("SELECT 1").execute(&state.db).await.is_ok() {
         "Connected"
     } else {

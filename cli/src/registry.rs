@@ -9,6 +9,8 @@ use serde_json::json;
 use std::io::{Cursor, Read, Write};
 use zip::write::FileOptions;
 
+/// Prompts for username/password and authenticates with the registry.
+/// Stores the token in the system keyring on success.
 pub async fn login() -> Result<()> {
     let username = Text::new("Username:").prompt()?;
     let username = username.trim().to_string();
@@ -36,6 +38,7 @@ pub async fn login() -> Result<()> {
     let text = response.text().await?;
 
     if status.is_success() {
+        // Parse the response and extract the token.
         let data: serde_json::Value = match serde_json::from_str(&text) {
             Ok(d) => d,
             Err(_) => {
@@ -48,6 +51,7 @@ pub async fn login() -> Result<()> {
             .as_str()
             .ok_or_else(|| anyhow!("Token missing in response"))?;
 
+        // Save credentials to disk and keyring.
         let mut auth = AuthConfig::load()?;
         auth.token = Some(token.to_string());
         auth.username = Some(username.clone());
@@ -59,9 +63,11 @@ pub async fn login() -> Result<()> {
             Logger::highlight(&username)
         ));
     } else {
+        // Try to parse the error message from the response.
+        // If it's JSON with an "error" field, use that. Otherwise use the raw text.
         let msg = match serde_json::from_str::<serde_json::Value>(&text) {
             Ok(json) => json["error"].as_str().unwrap_or(&text).to_string(),
-            Err(_) => text, // If not JSON, use raw text (e.g. 500 Internal Server Error)
+            Err(_) => text, // Fallback for non-JSON responses (e.g. 500 errors)
         };
         Logger::error(format!("Login failed ({}): {}", status, msg));
     }
@@ -69,11 +75,12 @@ pub async fn login() -> Result<()> {
     Ok(())
 }
 
+/// Creates a new account on the registry and logs in automatically.
 pub async fn signup() -> Result<()> {
     let username = Text::new("Choose Username:").prompt()?;
     let password = Password::new("Choose Password:")
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
-        .without_confirmation() // Explicitly disable confirmation just in case
+        .without_confirmation() // Explicitly no confirmation—user gets one shot
         .prompt()?;
 
     Logger::info("Creating account on Mosaic Registry...");
@@ -101,6 +108,7 @@ pub async fn signup() -> Result<()> {
         ));
         Logger::info("Logging you in automatically...");
 
+        // Parse the response to get the auto-login token.
         let data: serde_json::Value = match serde_json::from_str(&text) {
             Ok(d) => d,
             Err(_) => {
@@ -113,6 +121,7 @@ pub async fn signup() -> Result<()> {
             .as_str()
             .ok_or_else(|| anyhow!("Token missing in response"))?;
 
+        // Log them in immediately by saving the token.
         let mut auth = AuthConfig::load()?;
         auth.token = Some(token.to_string());
         auth.username = Some(username.clone());
@@ -131,12 +140,15 @@ pub async fn signup() -> Result<()> {
     Ok(())
 }
 
+/// Clears all credentials from disk and keyring.
 pub async fn logout() -> Result<()> {
     AuthConfig::logout()?;
     Logger::success("Logged out successfully.");
     Ok(())
 }
 
+/// Searches the registry for packages matching a query.
+/// Displays results in a nice table.
 pub async fn search(query: String) -> Result<()> {
     let auth = AuthConfig::load()?;
     let registry_url = auth
@@ -180,6 +192,12 @@ pub async fn search(query: String) -> Result<()> {
     Ok(())
 }
 
+/// Publishes a package to the registry.
+///
+/// This is the big one. Does a lot of work:
+/// 1. Zips up all non-ignored files in the project
+/// 2. Registers the version with the registry (creates package if needed)
+/// 3. Uploads the zip blob to storage
 pub async fn publish(version_override: Option<&str>) -> Result<()> {
     let auth = AuthConfig::load()?;
     let token = auth
@@ -197,7 +215,7 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
 
     Logger::command("publish", format!("{}@{}", name, version));
 
-    // 1. Create Zip
+    // Step 1: Create a zip file of all publishable source files
     let mut buf = Vec::new();
     {
         Logger::info("Packaging source files...");
@@ -206,8 +224,9 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
             .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o755);
 
+        // Use `ignore` crate to walk files, respecting .gitignore and .mosaicignore
         let walker = WalkBuilder::new(".")
-            .hidden(true) // Ignore hidden files (.git, etc.)
+            .hidden(true) // Ignore hidden files (.git, .env, etc.)
             .add_custom_ignore_filename(".mosaicignore")
             .build();
 
@@ -219,31 +238,47 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
                         continue;
                     }
 
-                    // Manual safety checks for common folders, just in case they aren't ignored
                     let path_str = path.to_string_lossy();
+
+                    // Extra paranoia: manually skip common build directories even if not ignored.
+                    // The `ignore` crate is usually good about this, but belt + suspenders.
                     if path_str.contains("node_modules") || path_str.contains("target") {
                         continue;
                     }
-                    
-                    // Explicitly ignore manifest
-                    if path.file_name().map(|s| s == "mosaic.toml").unwrap_or(false) {
+
+                    // Don't publish the manifest itself—that would be weird.
+                    if path
+                        .file_name()
+                        .map(|s| s == "mosaic.toml")
+                        .unwrap_or(false)
+                    {
                         continue;
                     }
 
-                    // Normalize path for zip
+                    // Normalize the path for the zip file.
+                    // Remove leading "./" and fix Windows path separators.
                     let name_str = if path.starts_with(".") {
-                         path.strip_prefix(".").unwrap_or(path).to_string_lossy().trim_start_matches('\\').trim_start_matches('/').to_string()
+                        path.strip_prefix(".")
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .trim_start_matches('\\')
+                            .trim_start_matches('/')
+                            .to_string()
                     } else {
                         path_str.to_string()
                     };
-                    
-                    if name_str.is_empty() { continue; }
+
+                    if name_str.is_empty() {
+                        continue;
+                    }
 
                     zip.start_file(name_str.clone(), options)?;
                     let content = std::fs::read(path)?;
                     zip.write_all(&content)?;
                 }
                 Err(err) => {
+                    // A single file access error shouldn't kill the whole publish.
+                    // Just warn and skip it.
                     Logger::warn(format!("Skipping file access error: {}", err));
                 }
             }
@@ -253,28 +288,30 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
 
     let client = reqwest::Client::new();
 
-    // 2. Register Version (if it doesn't exist)
+    // Step 2: Register the version with the registry.
+    // If the package doesn't exist, we have to create it first.
     Logger::info("Registering version with registry...");
     let reg_res = client
         .post(format!("{}/packages/{}/versions", registry_url, name))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "version": version,
-            "lua_source_url": "tbd"
+            "lua_source_url": "tbd" // Will be updated after upload
         }))
         .send()
         .await?;
 
     if !reg_res.status().is_success() && reg_res.status() != reqwest::StatusCode::CONFLICT {
-        // If package doesn't exist, try to create it first
+        // 409 CONFLICT means version already exists, which is fine. Anything else is an error.
         if reg_res.status() == reqwest::StatusCode::NOT_FOUND {
+            // Package doesn't exist—have to create it first before registering versions.
             Logger::info("Package doesn't exist. Creating package...");
             let create_pkg_res = client
                 .post(format!("{}/packages", registry_url))
                 .header("Authorization", format!("Bearer {}", token))
                 .json(&json!({
                     "name": name,
-                    "description": "A Mosaic package", // Default description
+                    "description": "A Mosaic package", // Placeholder, user can update later
                     "repository": "",
                     "author": auth.username.as_ref().unwrap_or(&"unknown".to_string()),
                     "created_at": 0,
@@ -284,16 +321,16 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
                 .await?;
 
             if !create_pkg_res.status().is_success() {
-                 let status = create_pkg_res.status();
-                 let text = create_pkg_res.text().await?;
-                 let msg = match serde_json::from_str::<serde_json::Value>(&text) {
-                     Ok(json) => json["error"].as_str().unwrap_or(&text).to_string(),
-                     Err(_) => text,
-                 };
-                 return Err(anyhow!("Failed to create package ({}): {}", status, msg));
+                let status = create_pkg_res.status();
+                let text = create_pkg_res.text().await?;
+                let msg = match serde_json::from_str::<serde_json::Value>(&text) {
+                    Ok(json) => json["error"].as_str().unwrap_or(&text).to_string(),
+                    Err(_) => text,
+                };
+                return Err(anyhow!("Failed to create package ({}): {}", status, msg));
             }
-            
-            // Retry registering version
+
+            // Now retry registering the version.
             let retry_res = client
                 .post(format!("{}/packages/{}/versions", registry_url, name))
                 .header("Authorization", format!("Bearer {}", token))
@@ -304,17 +341,23 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
                 .send()
                 .await?;
 
-            if !retry_res.status().is_success() && retry_res.status() != reqwest::StatusCode::CONFLICT {
+            if !retry_res.status().is_success()
+                && retry_res.status() != reqwest::StatusCode::CONFLICT
+            {
                 let err: serde_json::Value = retry_res.json().await?;
-                return Err(anyhow!("Failed to register version after package creation: {}", err["error"]));
+                return Err(anyhow!(
+                    "Failed to register version after package creation: {}",
+                    err["error"]
+                ));
             }
         } else {
-             let err: serde_json::Value = reg_res.json().await?;
-             return Err(anyhow!("Failed to register version: {}", err["error"]));
+            let err: serde_json::Value = reg_res.json().await?;
+            return Err(anyhow!("Failed to register version: {}", err["error"]));
         }
     }
 
-    // 3. Upload Blob
+    // Step 3: Upload the zip blob to storage.
+    // This is where the actual package code lives.
     Logger::info("Uploading package blob to storage...");
     let upload_res = client
         .post(format!(
@@ -340,6 +383,10 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Downloads a package from the registry and extracts the first .lua file.
+///
+/// This is what `mosaic install` calls under the hood. Fetches the version metadata,
+/// grabs the download URL, fetches the zip, and extracts the Lua source code.
 pub async fn download_from_registry(name: &str, version: &str) -> Result<String> {
     let auth = AuthConfig::load()?;
     let registry_url = auth
@@ -348,6 +395,7 @@ pub async fn download_from_registry(name: &str, version: &str) -> Result<String>
 
     let client = reqwest::Client::new();
 
+    // Fetch the list of versions for this package to get the download URL.
     let versions_res = client
         .get(format!("{}/packages/{}/versions", registry_url, name))
         .send()
@@ -363,6 +411,7 @@ pub async fn download_from_registry(name: &str, version: &str) -> Result<String>
         .as_str()
         .ok_or_else(|| anyhow!("Source URL missing for package {}@{}", name, version))?;
 
+    // Download the zip blob from storage.
     let blob_res = client
         .get(format!("{}{}", registry_url, source_url))
         .send()
@@ -370,6 +419,9 @@ pub async fn download_from_registry(name: &str, version: &str) -> Result<String>
 
     let bytes = blob_res.bytes().await?;
 
+    // Extract the first .lua file from the zip.
+    // Assumes there's at least one Lua file in the package. If there's multiple,
+    // we just return the first one we find. This might be a dumb assumption someday.
     let reader = Cursor::new(bytes);
     let mut zip = zip::ZipArchive::new(reader)?;
 

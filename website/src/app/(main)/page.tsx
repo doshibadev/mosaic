@@ -1,14 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Github } from "lucide-react";
-import { searchPackages } from "@/lib/registry";
+import { searchPackages, type RegistryPackage } from "@/lib/registry";
 import { Suspense } from "react";
 import { InstallCommand } from "@/components/install-command";
 
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Hero — centered, logo-forward */}
+      {/* Hero section — centered, big logo and copy */}
       <section className="flex-1 flex items-center justify-center px-6 py-20 md:py-28">
         <div className="text-center w-full max-w-5xl">
           <Image
@@ -30,6 +30,7 @@ export default function HomePage() {
             </Link>
           </p>
 
+          {/* Copy-paste install command — see InstallCommand for the auto-detect logic */}
           <InstallCommand />
 
           <div className="flex gap-4 justify-center flex-wrap mt-10">
@@ -52,12 +53,12 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Featured Packages (auto-hides if empty) */}
+      {/* Featured packages section — wrapped in Suspense and returns null if empty so it doesn't show */}
       <Suspense fallback={null}>
         <FeaturedPackageList />
       </Suspense>
 
-      {/* About */}
+      {/* About / explanation section */}
       <section className="border-t border-border/50">
         <div className="mx-auto max-w-4xl px-6 py-20 md:py-24 text-center">
           <h2 className="text-3xl font-semibold text-foreground mb-8">What is Mosaic?</h2>
@@ -80,7 +81,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Quick reference */}
+      {/* Quick reference table for common commands */}
       <section className="border-t border-border/50">
         <div className="mx-auto max-w-4xl px-6 py-20 md:py-24">
           <h2 className="text-3xl font-semibold text-foreground mb-8 text-center">Quick reference</h2>
@@ -105,75 +106,93 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border/50 mt-auto">
-        <div className="mx-auto max-w-4xl px-6 py-10 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground/60">
-            © 2026 Mosaic · MIT License
-          </p>
-          <div className="flex items-center gap-6 text-sm text-muted-foreground/60">
-            <Link href="/docs" className="hover:text-foreground transition-colors">Docs</Link>
-            <Link href="/packages" className="hover:text-foreground transition-colors">Packages</Link>
-            <Link href="https://github.com/doshibadev/mosaic" target="_blank" className="hover:text-foreground transition-colors">
-              <Github className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
 
+/// Fetches featured packages (most downloaded + recently updated).
+/// Returns null if the registry is empty so this section doesn't show up.
+/// Uses Promise.all to fetch both in parallel for speed.
 async function FeaturedPackageList() {
-  const packages = await searchPackages("");
-  const featured = packages.slice(0, 3);
+  const [featured, latest] = await Promise.all([
+    searchPackages("", { sort: "downloads", limit: 3 }),
+    searchPackages("", { sort: "updated", limit: 3 })
+  ]);
 
-  if (featured.length === 0) {
+  if (featured.length === 0 && latest.length === 0) {
     return null;
   }
 
   return (
     <section className="border-t border-border/50 bg-card/30">
       <div className="mx-auto max-w-6xl px-6 py-20">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-semibold text-foreground">Featured Packages</h2>
-          <Link href="/packages" className="text-primary hover:underline text-sm font-medium">
-            View all
-          </Link>
-        </div>
         
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {featured.map((pkg) => (
-            <Link
-              key={pkg.name}
-              href={`/packages/${pkg.name}`}
-              className="group block p-6 rounded-lg border border-border bg-card hover:border-primary/30 transition-all h-full"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-mono font-medium text-lg text-foreground group-hover:text-primary transition-colors">
-                  {pkg.name}
-                </span>
-                <span className="text-xs font-mono text-muted-foreground bg-accent px-2 py-1 rounded">
-                  v{pkg.version}
-                </span>
-              </div>
-              <p className="text-muted-foreground text-sm leading-relaxed line-clamp-2">
-                {pkg.description}
-              </p>
-              <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground/60">
-                <div className="flex items-center gap-1">
-                  <span className="bg-primary/10 text-primary w-2 h-2 rounded-full" />
-                  {pkg.author}
-                </div>
-                {pkg.updated_at && (
-                  <span>Updated {new Date(pkg.updated_at * 1000).toLocaleDateString()}</span>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
+        {/* Most Downloaded - only shows if we got results */}
+        {featured.length > 0 && (
+          <div className="mb-16">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-semibold text-foreground">Most Downloaded</h2>
+              <Link href="/packages" className="text-primary hover:underline text-sm font-medium">
+                View all
+              </Link>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featured.map((pkg) => (
+                <PackageCard key={pkg.name} pkg={pkg} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recently Updated - only shows if we got results */}
+        {latest.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-semibold text-foreground">Recently Updated</h2>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {latest.map((pkg) => (
+                <PackageCard key={pkg.name} pkg={pkg} />
+              ))}
+            </div>
+          </div>
+        )}
+
       </div>
     </section>
+  );
+}
+
+/// Card component for displaying a single package in the featured list.
+function PackageCard({ pkg }: { pkg: RegistryPackage }) {
+  return (
+    <Link
+      href={`/packages/${pkg.name}`}
+      className="group block p-6 rounded-lg border border-border bg-card hover:border-primary/30 transition-all h-full"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <span className="font-mono font-medium text-lg text-foreground group-hover:text-primary transition-colors">
+          {pkg.name}
+        </span>
+        <span className="text-xs font-mono text-muted-foreground bg-accent px-2 py-1 rounded">
+          v{pkg.version}
+        </span>
+      </div>
+      <p className="text-muted-foreground text-sm leading-relaxed line-clamp-2">
+        {pkg.description}
+      </p>
+      <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground/60">
+        <div className="flex items-center gap-1">
+          <span className="bg-primary/10 text-primary w-2 h-2 rounded-full" />
+          {pkg.author}
+        </div>
+        <div className="flex items-center gap-1">
+           ⬇ {pkg.download_count?.toLocaleString() || 0}
+        </div>
+        {pkg.updated_at && (
+          <span>{new Date(pkg.updated_at * 1000).toLocaleDateString()}</span>
+        )}
+      </div>
+    </Link>
   );
 }

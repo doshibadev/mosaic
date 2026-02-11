@@ -46,3 +46,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 .vercel
+
+# SQLx
+sqlx-data.json
+.sqlx/

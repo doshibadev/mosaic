@@ -1,4 +1,10 @@
 {
   "index": "Introduction",
-  "getting-started": "Getting Started"
+  "getting-started": "Getting Started",
+  "---": {
+    "type": "separator",
+    "title": "Legal"
+  },
+  "terms": "Terms of Service",
+  "privacy": "Privacy Policy"
 }

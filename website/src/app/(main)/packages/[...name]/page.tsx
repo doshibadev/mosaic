@@ -11,6 +11,8 @@ interface PackagePageProps {
 }
 
 export default async function PackagePage({ params }: PackagePageProps) {
+  // Next.js 15+ made params async. The name comes in as an array because of the
+  // catch-all route [name].tsx. Join it to handle scoped packages like "scope/name".
   const { name } = await params;
   const packageName = name.join("/");
   const pkg = await getPackage(packageName);
@@ -31,7 +33,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
           Back to packages
         </Link>
 
-        {/* Header */}
+        {/* Header section with package name and latest version */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-10">
           <div>
             <div className="flex items-center gap-3 mb-3">
@@ -49,11 +51,13 @@ export default async function PackagePage({ params }: PackagePageProps) {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          {/* Left column: documentation/readme */}
           <div className="lg:col-span-2 space-y-10">
             {/* Documentation (README) */}
             {pkg.readme ? (
               <div>
                 <h2 className="text-lg font-semibold text-foreground mb-4">Documentation</h2>
+                {/* ReactMarkdown with custom prose styling for dark mode */}
                 <article className="prose prose-invert max-w-none prose-headings:font-bold prose-a:text-primary prose-code:text-primary prose-code:bg-muted/50 prose-code:px-1 prose-code:rounded prose-pre:bg-card prose-pre:border prose-pre:border-border">
                   <ReactMarkdown>{pkg.readme}</ReactMarkdown>
                 </article>
@@ -66,6 +70,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
             )}
           </div>
 
+          {/* Right column: installation and metadata */}
           <div className="space-y-10">
             {/* Install command */}
             <div>
@@ -91,7 +96,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
               </div>
             </div>
 
-            {/* Usage example */}
+            {/* Usage example - shows how to actually use the package in Polytoria */}
             <div>
               <h2 className="text-lg font-semibold text-foreground mb-3">Usage</h2>
               <div className="bg-card border border-border rounded-lg p-4 overflow-x-auto scrollbar-hide">
@@ -109,7 +114,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
               </div>
             </div>
 
-            {/* Details grid */}
+            {/* Metadata grid: author, license, repo, downloads */}
             <div className="grid grid-cols-1 gap-4">
               <div className="bg-card border border-border rounded-lg p-5">
                 <h3 className="text-sm text-muted-foreground/60 mb-2">Author</h3>
@@ -132,12 +137,10 @@ export default async function PackagePage({ params }: PackagePageProps) {
                   </Link>
                 </div>
               )}
-              {pkg.downloads !== undefined && (
-                <div className="bg-card border border-border rounded-lg p-5">
-                  <h3 className="text-sm text-muted-foreground/60 mb-2">Downloads</h3>
-                  <p className="text-base text-foreground font-medium">{pkg.downloads.toLocaleString()}</p>
-                </div>
-              )}
+              <div className="bg-card border border-border rounded-lg p-5">
+                <h3 className="text-sm text-muted-foreground/60 mb-2">Downloads</h3>
+                <p className="text-base text-foreground font-medium">{pkg.download_count.toLocaleString()}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -146,8 +149,10 @@ export default async function PackagePage({ params }: PackagePageProps) {
   );
 }
 
+/// Converts a package name to PascalCase for use in Lua.
+/// Handles scoped packages: "scope/package" -> "Package"
+/// Example: "logger-util" -> "LoggerUtil", "my/logger" -> "Logger"
 function toPascalCase(str: string): string {
-  // Handle scoped packages: "scope/package" -> "package"
   const name = str.includes("/") ? str.split("/")[1] : str;
   return name
     .split(/[-_]/)
@@ -155,6 +160,9 @@ function toPascalCase(str: string): string {
     .join("");
 }
 
+/// Generates the correct require path for scoped vs non-scoped packages.
+/// Scoped packages like "scope/logger" use nested table access: ["scope"]["logger"]
+/// Regular packages like "logger" use single access: ["logger"]
 function getErrorPathArgs(name: string) {
   if (name.includes("/")) {
     const [scope, pkg] = name.split("/");

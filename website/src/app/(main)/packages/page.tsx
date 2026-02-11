@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { searchPackages, type RegistryPackage } from "@/lib/registry";
 
+/// Main content component. Separated from PackagesPage so Suspense can wrap it.
+/// This needs to be a client component because it uses useSearchParams.
 function PackagesContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams?.get("q") || "";
@@ -13,6 +15,8 @@ function PackagesContent() {
   const [packages, setPackages] = useState<RegistryPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Debounce the search so we don't hammer the API on every keystroke.
+  // 300ms is enough to let users type naturally without feeling laggy.
   useEffect(() => {
     const fetchPackages = async () => {
       setIsLoading(true);
@@ -30,7 +34,7 @@ function PackagesContent() {
       <div className="mx-auto max-w-5xl w-full px-6 py-12 flex-1">
         <h1 className="text-3xl font-semibold text-foreground mb-8">Packages</h1>
 
-        {/* Search */}
+        {/* Search input - swaps icon from search to spinner while loading */}
         <div className="relative mb-10">
           {isLoading ? (
             <Loader2 className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-primary" />
@@ -46,14 +50,16 @@ function PackagesContent() {
           />
         </div>
 
-        {/* Results */}
+        {/* Results section - three states: loading skeleton, results, or empty state */}
         {isLoading ? (
+          // Show skeleton loaders while fetching. Makes the page feel responsive.
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-20 w-full animate-pulse rounded-lg bg-card" />
             ))}
           </div>
         ) : packages.length > 0 ? (
+          // Display the package list
           <div className="space-y-3">
             {packages.map((pkg) => (
               <Link
@@ -79,6 +85,7 @@ function PackagesContent() {
             ))}
           </div>
         ) : (
+          // Empty state when no results or no packages exist
           <div className="text-center py-24">
             <p className="text-xl text-muted-foreground mb-2">
               {query ? `Nothing found for "${query}"` : "No packages yet"}
@@ -93,6 +100,8 @@ function PackagesContent() {
   );
 }
 
+/// Wrapper for Suspense boundary. Separating this from the content component
+/// prevents hydration mismatches when using useSearchParams with server rendering.
 export default function PackagesPage() {
   return (
     <Suspense>

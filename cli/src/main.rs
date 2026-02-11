@@ -14,6 +14,9 @@ use logger::Logger;
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // Allow users to override the registry URL via CLI flag.
+    // We use unsafe here because set_var mutates global state, but it's fine since we're doing it once at startup.
+    // If you're uncomfortable with this, feel free to refactor to pass the URL through the call stack instead.
     if let Some(url) = &cli.api_url {
         unsafe {
             std::env::set_var("MOSAIC_REGISTRY_URL", url);
@@ -23,6 +26,8 @@ async fn main() -> anyhow::Result<()> {
     match &cli.command {
         Commands::Init => {
             Logger::banner();
+            // Get the directory name as a fallback project name.
+            // If the user is in /home/alice/my-project, we use "my-project".
             let current_dir = std::env::current_dir()?;
             let project_name = current_dir
                 .file_name()
@@ -37,11 +42,16 @@ async fn main() -> anyhow::Result<()> {
             config.save()?;
             Logger::success("Created mosaic.toml");
         }
+
         Commands::Install { package } => {
+            // Two modes:
+            // 1. Install a specific package: mosaic install logger@1.0.0
+            // 2. Install all from mosaic.toml: mosaic install (no args)
             if let Some(query) = package {
                 let (package_name, resolved_version) = installer::install_package(query).await?;
 
-                // Try to load and update config
+                // Update mosaic.toml with the newly installed package.
+                // We wrap this in a try-load because users might not have a config yet (weird edge case).
                 if let Ok(mut config) = config::Config::load() {
                     config.add_dependency(&package_name, &resolved_version);
                     config.save()?;
@@ -51,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
                     ));
                 }
             } else {
+                // No package specified—install everything from mosaic.toml
                 installer::install_all().await?;
             }
         }
@@ -58,26 +69,36 @@ async fn main() -> anyhow::Result<()> {
         Commands::Remove { package } => {
             installer::remove_package(package).await?;
         }
+
         Commands::List => {
             installer::list_packages().await?;
         }
+
         Commands::Update => {
+            // Update is basically just reinstall everything.
+            // Could be smarter about checking what's out of date, but this works for now.
             installer::update_all().await?;
         }
+
         Commands::Login => {
             Logger::banner();
             registry::login().await?;
         }
+
         Commands::Logout => {
             registry::logout().await?;
         }
+
         Commands::Signup => {
             Logger::banner();
             registry::signup().await?;
         }
+
         Commands::Publish { version } => {
+            // If the user provides --version, use that. Otherwise let the registry module handle it.
             registry::publish(version.as_deref()).await?;
         }
+
         Commands::Search { query } => {
             registry::search(query.clone()).await?;
         }
