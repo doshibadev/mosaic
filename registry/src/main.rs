@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 3. Connect to Database
     let db = db::connect().await?;
-    tracing::info!("Connected to SurrealDB Cloud successfully!");
+    tracing::info!("Connected to Neon PostgreSQL successfully!");
 
     // 4. Initialize Storage
     let storage = registry::utils::storage::StorageService::new().await;

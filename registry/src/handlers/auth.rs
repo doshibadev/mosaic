@@ -5,26 +5,20 @@ use axum::{Json, extract::State, http::StatusCode};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde_json::json;
 use std::env;
+use uuid::Uuid;
 
 pub async fn signup(
     State(state): State<AppState>,
     Json(payload): Json<SignupRequest>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // 1. Check if user already exists
-    let existing: Option<User> = match state
-        .db
-        .query("SELECT * FROM user WHERE username = $username")
-        .bind(("username", payload.username.clone()))
-        .await
-    {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("Database error: {}", e)})),
-            );
-        }
-    };
+    let existing: Option<Uuid> = match sqlx::query_scalar("SELECT id FROM users WHERE username = $1")
+        .bind(&payload.username)
+        .fetch_optional(&state.db)
+        .await {
+            Ok(id) => id,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
+        };
 
     if existing.is_some() {
         return (
@@ -45,21 +39,20 @@ pub async fn signup(
     };
 
     // 3. Create user
-    let user = User {
-        id: None,
-        username: payload.username,
-        password_hash,
-        created_at: chrono::Utc::now().timestamp(),
-    };
-
-    let created_user: User = match state.db.create("user").content(user).await {
-        Ok(Some(u)) => u,
-        Ok(None) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to create user"})),
-            );
-        }
+    let now = chrono::Utc::now().timestamp();
+    let user = match sqlx::query_as::<_, User>(
+        r#"
+        INSERT INTO users (username, password_hash, created_at)
+        VALUES ($1, $2, $3)
+        RETURNING *
+        "#
+    )
+    .bind(payload.username)
+    .bind(password_hash)
+    .bind(now)
+    .fetch_one(&state.db)
+    .await {
+        Ok(u) => u,
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -76,8 +69,8 @@ pub async fn signup(
         .timestamp();
 
     let claims = Claims {
-        sub: created_user.id.map(|id| id.to_string()).unwrap_or_default(),
-        username: created_user.username.clone(),
+        sub: user.id.map(|id| id.to_string()).unwrap_or_default(),
+        username: user.username.clone(),
         exp: expiration,
     };
 
@@ -88,7 +81,6 @@ pub async fn signup(
     ) {
         Ok(t) => t,
         Err(_) => {
-            // User was created but token failed - they can still log in manually
             return (
                 StatusCode::CREATED,
                 Json(json!({"message": "User created successfully but token generation failed"})),
@@ -100,7 +92,7 @@ pub async fn signup(
         StatusCode::CREATED,
         Json(json!(AuthResponse {
             token,
-            username: created_user.username,
+            username: user.username,
         })),
     )
 }
@@ -110,30 +102,24 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // 1. Fetch user
-    let user: Option<User> = match state
-        .db
-        .query("SELECT * FROM user WHERE username = $username")
-        .bind(("username", payload.username.clone()))
-        .await
-    {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("Database error: {}", e)})),
-            );
-        }
-    };
-
-    let user = match user {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Invalid credentials"})),
-            );
-        }
-    };
+    let user = match sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = $1")
+        .bind(payload.username)
+        .fetch_optional(&state.db)
+        .await {
+            Ok(Some(u)) => u,
+            Ok(None) => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "Invalid credentials"})),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("Database error: {}", e)})),
+                );
+            }
+        };
 
     // 2. Verify password
     match verify_password(&payload.password, &user.password_hash) {

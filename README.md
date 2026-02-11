@@ -81,7 +81,7 @@ Logger:info("hey, it works")
 ```
 mosaic/
 ├── cli/          # Rust CLI
-├── registry/     # Axum API server (SurrealDB + R2)
+├── registry/     # Axum API server (PostgreSQL + R2)
 ├── website/      # Next.js website & package browser
 ├── research/     # Experiments and test data
 └── assets/       # Logo and brand stuff
@@ -97,7 +97,7 @@ cd mosaic
 cd cli
 cargo build --release
 
-# Run the registry (needs SurrealDB + R2 credentials)
+# Run the registry (needs Neon PostgreSQL + R2 credentials)
 cd ../registry
 cargo run
 ```
@@ -105,7 +105,7 @@ cargo run
 ## Stack
 
 - **CLI**: Rust (clap, reqwest, quick-xml)
-- **Registry**: Rust (Axum, SurrealDB, Cloudflare R2)
+- **Registry**: Rust (Axum, Neon PostgreSQL, Cloudflare R2)
 - **Website**: Next.js, Tailwind CSS
 - **Auth**: JWT
 

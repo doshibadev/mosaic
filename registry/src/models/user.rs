@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, FromRow)]
 pub struct User {
-    pub id: Option<surrealdb::sql::Thing>,
+    pub id: Option<Uuid>,
     pub username: String,
     pub password_hash: String,
     pub created_at: i64,

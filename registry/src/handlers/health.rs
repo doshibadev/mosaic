@@ -9,10 +9,11 @@ pub struct HealthResponse {
 }
 
 pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
-    // Check if DB is alive
-    let db_status = match state.db.health().await {
-        Ok(_) => "Connected",
-        Err(_) => "Disconnected",
+    // Check if DB is alive using simple query
+    let db_status = if sqlx::query("SELECT 1").execute(&state.db).await.is_ok() {
+        "Connected"
+    } else {
+        "Disconnected"
     };
 
     let response = HealthResponse {

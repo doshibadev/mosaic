@@ -13,9 +13,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 # 3. Builder Stage (Cached Dependencies)
 # Build dependencies first - this layer is cached until Cargo.toml changes
 FROM chef as builder
-COPY --from=planner /app/recipe.json recipe.json
-# Install cmake (needed for aws-lc-rs)
+# Install cmake (needed for aws-lc-rs) - Do this BEFORE copying recipe so it's cached!
 RUN apt-get update && apt-get install -y cmake && rm -rf /var/lib/apt/lists/*
+
+COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this is the slow part, but now it's cached!
 RUN cargo chef cook --release --recipe-path recipe.json
 

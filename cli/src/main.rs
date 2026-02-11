@@ -68,6 +68,9 @@ async fn main() -> anyhow::Result<()> {
             Logger::banner();
             registry::login().await?;
         }
+        Commands::Logout => {
+            registry::logout().await?;
+        }
         Commands::Signup => {
             Logger::banner();
             registry::signup().await?;

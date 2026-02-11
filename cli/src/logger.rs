@@ -43,6 +43,10 @@ impl Logger {
         println!("{} {}", "✖".red().bold(), msg);
     }
 
+    pub fn warn<T: Display>(msg: T) {
+        println!("{} {}", "⚠".yellow().bold(), msg);
+    }
+
     pub fn header<T: Display>(msg: T) {
         println!(
             "\n{}",

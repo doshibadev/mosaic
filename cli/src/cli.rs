@@ -32,6 +32,8 @@ pub enum Commands {
     Update,
     /// Login to the Mosaic Registry
     Login,
+    /// Log out and clear credentials
+    Logout,
     /// Create a new account on the Mosaic Registry
     Signup,
     /// Publish a package to the Mosaic Registry

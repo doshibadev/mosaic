@@ -2,6 +2,7 @@ import { getPackage } from "@/lib/registry";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Github, Package } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface PackagePageProps {
   params: Promise<{
@@ -47,77 +48,98 @@ export default async function PackagePage({ params }: PackagePageProps) {
           </div>
         </div>
 
-        {/* Install command */}
-        <div className="mb-10">
-          <h2 className="text-lg font-semibold text-foreground mb-3">Install</h2>
-          <div className="bg-card border border-border rounded-lg p-4 max-w-lg">
-            <div className="flex items-center justify-between">
-              <div className="font-mono text-base">
-                <span className="text-muted-foreground/50 select-none">$ </span>
-                <span className="text-foreground">mosaic install {pkg.name}@{pkg.version}</span>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          <div className="lg:col-span-2 space-y-10">
+            {/* Documentation (README) */}
+            {pkg.readme ? (
+              <div>
+                <h2 className="text-lg font-semibold text-foreground mb-4">Documentation</h2>
+                <article className="prose prose-invert max-w-none prose-headings:font-bold prose-a:text-primary prose-code:text-primary prose-code:bg-muted/50 prose-code:px-1 prose-code:rounded prose-pre:bg-card prose-pre:border prose-pre:border-border">
+                  <ReactMarkdown>{pkg.readme}</ReactMarkdown>
+                </article>
+              </div>
+            ) : (
+               <div>
+                <h2 className="text-lg font-semibold text-foreground mb-4">Documentation</h2>
+                <p className="text-muted-foreground italic">No README provided.</p>
+               </div>
+            )}
+          </div>
+
+          <div className="space-y-10">
+            {/* Install command */}
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-3">Install</h2>
+              <div className="bg-card border border-border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-mono text-base break-all">
+                    <span className="text-muted-foreground/50 select-none">$ </span>
+                    <span className="text-foreground">mosaic install {pkg.name}@{pkg.version}</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground/60 mt-2">
+                Or add to your <code className="text-primary bg-accent px-1.5 py-0.5 rounded text-sm font-mono">mosaic.toml</code> manually:
+              </p>
+              <div className="bg-card border border-border rounded-lg p-4 mt-2 overflow-x-auto scrollbar-hide">
+                <pre className="font-mono text-sm text-foreground whitespace-pre">
+                  <span className="text-muted-foreground">[dependencies]</span>{"\n"}
+                  <span className="text-foreground">{pkg.name.includes("/") ? `"${pkg.name}"` : pkg.name}</span>
+                  <span className="text-muted-foreground"> = </span>
+                  <span className="text-primary">&quot;{pkg.version}&quot;</span>
+                </pre>
               </div>
             </div>
-          </div>
-          <p className="text-sm text-muted-foreground/60 mt-2">
-            Or add to your <code className="text-primary bg-accent px-1.5 py-0.5 rounded text-sm font-mono">mosaic.toml</code> manually:
-          </p>
-          <div className="bg-card border border-border rounded-lg p-4 mt-2 max-w-lg overflow-x-auto scrollbar-hide">
-            <pre className="font-mono text-sm text-foreground whitespace-pre">
-              <span className="text-muted-foreground">[dependencies]</span>{"\n"}
-              <span className="text-foreground">{pkg.name.includes("/") ? `"${pkg.name}"` : pkg.name}</span>
-              <span className="text-muted-foreground"> = </span>
-              <span className="text-primary">&quot;{pkg.version}&quot;</span>
-            </pre>
-          </div>
-        </div>
 
-        {/* Usage example */}
-        <div className="mb-10">
-          <h2 className="text-lg font-semibold text-foreground mb-3">Usage</h2>
-          <div className="bg-card border border-border rounded-lg p-4 max-w-lg overflow-x-auto scrollbar-hide">
-            <pre className="font-mono text-sm text-foreground leading-relaxed whitespace-pre">
-              <span className="text-muted-foreground">-- In your Polytoria script</span>{"\n"}
-              <span className="text-primary">local</span>
-              <span className="text-foreground"> {toPascalCase(pkg.name)} = </span>
-              <span className="text-secondary">require</span>
-              <span className="text-foreground">(game[</span>
-              <span className="text-primary">&quot;ScriptService&quot;</span>
-              <span className="text-foreground">]</span>
-              {getErrorPathArgs(pkg.name)}
-              <span className="text-foreground">)</span>
-            </pre>
-          </div>
-        </div>
+            {/* Usage example */}
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-3">Usage</h2>
+              <div className="bg-card border border-border rounded-lg p-4 overflow-x-auto scrollbar-hide">
+                <pre className="font-mono text-sm text-foreground leading-relaxed whitespace-pre">
+                  <span className="text-muted-foreground">-- In your Polytoria script</span>{"\n"}
+                  <span className="text-primary">local</span>
+                  <span className="text-foreground"> {toPascalCase(pkg.name)} = </span>
+                  <span className="text-secondary">require</span>
+                  <span className="text-foreground">(game[</span>
+                  <span className="text-primary">&quot;ScriptService&quot;</span>
+                  <span className="text-foreground">]</span>
+                  {getErrorPathArgs(pkg.name)}
+                  <span className="text-foreground">)</span>
+                </pre>
+              </div>
+            </div>
 
-        {/* Details grid */}
-        <div className="grid sm:grid-cols-2 gap-4 mb-10">
-          <div className="bg-card border border-border rounded-lg p-5">
-            <h3 className="text-sm text-muted-foreground/60 mb-2">Author</h3>
-            <p className="text-base text-foreground font-medium">{pkg.author}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-5">
-            <h3 className="text-sm text-muted-foreground/60 mb-2">License</h3>
-            <p className="text-base text-foreground font-medium">MIT</p>
-          </div>
-          {pkg.repository && (
-            <div className="bg-card border border-border rounded-lg p-5 sm:col-span-2">
-              <h3 className="text-sm text-muted-foreground/60 mb-2">Repository</h3>
-              <Link
-                href={pkg.repository}
-                target="_blank"
-                className="inline-flex items-center gap-2 text-secondary hover:underline text-base"
-              >
-                <Github className="h-4 w-4" />
-                {pkg.repository}
-              </Link>
+            {/* Details grid */}
+            <div className="grid grid-cols-1 gap-4">
+              <div className="bg-card border border-border rounded-lg p-5">
+                <h3 className="text-sm text-muted-foreground/60 mb-2">Author</h3>
+                <p className="text-base text-foreground font-medium">{pkg.author}</p>
+              </div>
+              <div className="bg-card border border-border rounded-lg p-5">
+                <h3 className="text-sm text-muted-foreground/60 mb-2">License</h3>
+                <p className="text-base text-foreground font-medium">MIT</p>
+              </div>
+              {pkg.repository && (
+                <div className="bg-card border border-border rounded-lg p-5">
+                  <h3 className="text-sm text-muted-foreground/60 mb-2">Repository</h3>
+                  <Link
+                    href={pkg.repository}
+                    target="_blank"
+                    className="inline-flex items-center gap-2 text-secondary hover:underline text-base"
+                  >
+                    <Github className="h-4 w-4" />
+                    {pkg.repository}
+                  </Link>
+                </div>
+              )}
+              {pkg.downloads !== undefined && (
+                <div className="bg-card border border-border rounded-lg p-5">
+                  <h3 className="text-sm text-muted-foreground/60 mb-2">Downloads</h3>
+                  <p className="text-base text-foreground font-medium">{pkg.downloads.toLocaleString()}</p>
+                </div>
+              )}
             </div>
-          )}
-          {pkg.downloads !== undefined && (
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm text-muted-foreground/60 mb-2">Downloads</h3>
-              <p className="text-base text-foreground font-medium">{pkg.downloads.toLocaleString()}</p>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

@@ -3,14 +3,15 @@ use crate::config::Config;
 use crate::logger::Logger;
 use anyhow::{Context, Result, anyhow};
 use comfy_table::Table;
+use ignore::WalkBuilder;
 use inquire::{Password, Text};
 use serde_json::json;
 use std::io::{Cursor, Read, Write};
-use walkdir::WalkDir;
 use zip::write::FileOptions;
 
 pub async fn login() -> Result<()> {
     let username = Text::new("Username:").prompt()?;
+    let username = username.trim().to_string();
     let password = Password::new("Password:")
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
         .without_confirmation()
@@ -130,6 +131,12 @@ pub async fn signup() -> Result<()> {
     Ok(())
 }
 
+pub async fn logout() -> Result<()> {
+    AuthConfig::logout()?;
+    Logger::success("Logged out successfully.");
+    Ok(())
+}
+
 pub async fn search(query: String) -> Result<()> {
     let auth = AuthConfig::load()?;
     let registry_url = auth
@@ -199,23 +206,46 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
             .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o755);
 
-        for entry in WalkDir::new(".").into_iter().filter_map(|e| e.ok()) {
-            let path = entry.path();
-            let relative_path = path.strip_prefix("./").unwrap_or(path);
+        let walker = WalkBuilder::new(".")
+            .hidden(true) // Ignore hidden files (.git, etc.)
+            .add_custom_ignore_filename(".mosaicignore")
+            .build();
 
-            if path.is_file() {
-                let name_str = relative_path.to_string_lossy();
-                if name_str.starts_with(".")
-                    || name_str.contains("node_modules")
-                    || name_str.contains("target")
-                    || name_str == "mosaic.toml"
-                {
-                    continue;
+        for result in walker {
+            match result {
+                Ok(entry) => {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        continue;
+                    }
+
+                    // Manual safety checks for common folders, just in case they aren't ignored
+                    let path_str = path.to_string_lossy();
+                    if path_str.contains("node_modules") || path_str.contains("target") {
+                        continue;
+                    }
+                    
+                    // Explicitly ignore manifest
+                    if path.file_name().map(|s| s == "mosaic.toml").unwrap_or(false) {
+                        continue;
+                    }
+
+                    // Normalize path for zip
+                    let name_str = if path.starts_with(".") {
+                         path.strip_prefix(".").unwrap_or(path).to_string_lossy().trim_start_matches('\\').trim_start_matches('/').to_string()
+                    } else {
+                        path_str.to_string()
+                    };
+                    
+                    if name_str.is_empty() { continue; }
+
+                    zip.start_file(name_str.clone(), options)?;
+                    let content = std::fs::read(path)?;
+                    zip.write_all(&content)?;
                 }
-
-                zip.start_file(name_str.to_string(), options)?;
-                let content = std::fs::read(path)?;
-                zip.write_all(&content)?;
+                Err(err) => {
+                    Logger::warn(format!("Skipping file access error: {}", err));
+                }
             }
         }
         zip.finish()?;

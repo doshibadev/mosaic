@@ -6,6 +6,7 @@ export interface RegistryPackage {
   repository?: string;
   downloads?: number;
   updated_at?: number;
+  readme?: string;
 }
 
 const REGISTRY_URL = process.env.NEXT_PUBLIC_REGISTRY_URL || "https://api.getmosaic.run";

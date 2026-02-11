@@ -6,3 +6,4 @@ pub struct AppState {
     pub db: DB,
     pub storage: StorageService,
 }
+

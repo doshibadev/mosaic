@@ -1,60 +1,75 @@
 use anyhow::Result;
+use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::env;
-use surrealdb::Surreal;
-use surrealdb::engine::any;
 
-pub type DB = Surreal<surrealdb::engine::any::Any>;
+pub type DB = PgPool;
 
 pub async fn connect() -> Result<DB> {
-    let url = env::var("SURREAL_URL").expect("SURREAL_URL must be set");
-    let user = env::var("SURREAL_USER").unwrap_or_else(|_| "root".to_string());
-    let pass = env::var("SURREAL_PASS").unwrap_or_else(|_| "root".to_string());
-    let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "mosaic".to_string());
-    let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "registry".to_string());
-    let scope = env::var("SURREAL_SCOPE").unwrap_or_else(|_| "root".to_string());
+    let url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-    // 1. Connect
-    let db = any::connect(url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&url)
+        .await?;
 
-    // 2. Authenticate based on scope
-    match scope.to_lowercase().as_str() {
-        "namespace" => {
-            db.signin(surrealdb::opt::auth::Namespace {
-                namespace: &ns,
-                username: &user,
-                password: &pass,
-            })
-            .await?;
-        }
-        "database" => {
-            db.signin(surrealdb::opt::auth::Database {
-                namespace: &ns,
-                database: &db_name,
-                username: &user,
-                password: &pass,
-            })
-            .await?;
-        }
-        _ => {
-            // Default to Root
-            db.signin(surrealdb::opt::auth::Root {
-                username: &user,
-                password: &pass,
-            })
-            .await?;
-        }
-    }
+    // Run migrations automatically on startup
+    // We must execute these one by one because sqlx prepared statements don't support multiple commands
+    
+    // 1. Extensions
+    sqlx::query(r#"CREATE EXTENSION IF NOT EXISTS "pg_search";"#)
+        .execute(&pool)
+        .await?;
 
-    // 3. Select namespace and database
-    db.use_ns(ns).use_db(db_name).await?;
+    // 2. Users Table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at BIGINT NOT NULL
+        )
+    "#)
+    .execute(&pool)
+    .await?;
 
-    // 4. Define Search Indices (Full-Text)
-    // We define an index on name and description for fast discovery.
-    // SurrealDB will handle the typo-tolerance and relevance.
-    let _ = db.query("
-        DEFINE ANALYZER OVERWRITE ascii TOKENIZERS class FILTERS lowercase, ascii;
-        DEFINE INDEX OVERWRITE package_search ON TABLE package COLUMNS name, description SEARCH ANALYZER ascii BM25 HIGHLIGHTS;
-    ").await;
+    // 3. Packages Table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS packages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name TEXT UNIQUE NOT NULL,
+            description TEXT NOT NULL,
+            author TEXT NOT NULL,
+            repository TEXT,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+        )
+    "#)
+    .execute(&pool)
+    .await?;
 
-    Ok(db)
+    // 4. Versions Table
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS package_versions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            package_id UUID REFERENCES packages(id) ON DELETE CASCADE,
+            version TEXT NOT NULL,
+            lua_source_url TEXT NOT NULL,
+            readme TEXT,
+            created_at BIGINT NOT NULL,
+            UNIQUE(package_id, version)
+        )
+    "#)
+    .execute(&pool)
+    .await?;
+
+    // 5. Search Index
+    // Note: If using pure Neon/Postgres, we use standard FTS.
+    sqlx::query(r#"
+        CREATE INDEX IF NOT EXISTS packages_search_idx ON packages 
+        USING GIN (to_tsvector('english', name || ' ' || description));
+    "#)
+    .execute(&pool)
+    .await?;
+
+    Ok(pool)
 }

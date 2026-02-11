@@ -11,31 +11,30 @@ use axum::{
 use semver::Version;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::io::{Cursor, Read};
 
-/// Fetches the latest version string for a given package from the package_version table.
+/// Fetches the latest version string for a given package from the package_versions table.
 async fn get_latest_version(state: &AppState, pkg: &Package) -> String {
-    let Some(ref pkg_id) = pkg.id else {
+    let Some(pkg_id) = pkg.id else {
         return "0.0.0".to_string();
     };
 
-    let versions: Vec<PackageVersion> = match state
-        .db
-        .query("SELECT * FROM package_version WHERE package_id = $pkg_id ORDER BY created_at DESC LIMIT 1")
-        .bind(("pkg_id", pkg_id.clone()))
-        .await
-    {
-        Ok(mut res) => res.take(0).unwrap_or(vec![]),
-        Err(_) => vec![],
-    };
+    let version: Option<String> = match sqlx::query_scalar("SELECT version FROM package_versions WHERE package_id = $1 ORDER BY created_at DESC LIMIT 1")
+        .bind(pkg_id)
+        .fetch_optional(&state.db)
+        .await {
+            Ok(v) => v,
+            Err(_) => None,
+        };
 
-    versions
-        .first()
-        .map(|v| v.version.clone())
-        .unwrap_or_else(|| "0.0.0".to_string())
+    version.unwrap_or_else(|| "0.0.0".to_string())
 }
 
 pub async fn list_packages(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
-    let packages: Vec<Package> = match state.db.select("package").await {
+    let packages = match sqlx::query_as::<_, Package>("SELECT * FROM packages")
+        .fetch_all(&state.db)
+        .await
+    {
         Ok(p) => p,
         Err(e) => {
             return (
@@ -66,31 +65,27 @@ pub async fn search_packages(
 ) -> (StatusCode, Json<serde_json::Value>) {
     let q = params.get("q").map(|s| s.as_str()).unwrap_or("");
 
-    // If query is empty, return all packages
-    let packages: Vec<Package> = if q.is_empty() {
-        match state.db.select("package").await {
-            Ok(p) => p,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("DB error: {}", e)})),
-                );
-            }
-        }
-    } else {
-        match state
-            .db
-            .query("SELECT * FROM package WHERE name @1@ $q OR description @1@ $q")
-            .bind(("q", q.to_string()))
+    let packages = if q.is_empty() {
+        match sqlx::query_as::<_, Package>("SELECT * FROM packages")
+            .fetch_all(&state.db)
             .await
         {
-            Ok(mut res) => res.take(0).unwrap_or(vec![]),
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("DB error: {}", e)})),
-                );
-            }
+            Ok(p) => p,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
+        }
+    } else {
+        match sqlx::query_as::<_, Package>(
+            r#"
+            SELECT * FROM packages 
+            WHERE to_tsvector('english', name || ' ' || description) @@ websearch_to_tsquery('english', $1)
+            "#
+        )
+        .bind(q)
+        .fetch_all(&state.db)
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
         }
     };
 
@@ -113,13 +108,12 @@ pub async fn get_package(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let package: Option<Package> = match state
-        .db
-        .query("SELECT * FROM package WHERE name = $name")
-        .bind(("name", name))
+    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+        .bind(name)
+        .fetch_optional(&state.db)
         .await
     {
-        Ok(mut res) => res.take(0).unwrap_or(None),
+        Ok(p) => p,
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -155,42 +149,46 @@ pub async fn get_package(
 pub async fn create_package(
     State(state): State<AppState>,
     user: AuthenticatedUser,
-    Json(mut payload): Json<Package>,
+    Json(payload): Json<Package>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let existing: Option<Package> = match state
-        .db
-        .query("SELECT * FROM package WHERE name = $name")
-        .bind(("name", payload.name.clone()))
-        .await
+    // Check if exists
+    let existing: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM packages WHERE name = $1")
+        .bind(&payload.name)
+        .fetch_one(&state.db)
+        .await 
     {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("DB error: {}", e)})),
-            );
-        }
+        Ok(count) => count,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
     };
 
-    if existing.is_some() {
+    if existing > 0 {
         return (
             StatusCode::CONFLICT,
             Json(json!({"error": "Package name already taken"})),
         );
     }
 
-    payload.author = user.username;
-    payload.created_at = chrono::Utc::now().timestamp();
-    payload.updated_at = payload.created_at;
-
-    let created: Result<Option<Package>, _> = state.db.create("package").content(payload).await;
+    let now = chrono::Utc::now().timestamp();
+    
+    // Insert
+    let created = sqlx::query_as::<_, Package>(
+        r#"
+        INSERT INTO packages (name, description, author, repository, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+        "#
+    )
+    .bind(payload.name)
+    .bind(payload.description)
+    .bind(user.username)
+    .bind(payload.repository)
+    .bind(now)
+    .bind(now)
+    .fetch_one(&state.db)
+    .await;
 
     match created {
-        Ok(Some(p)) => (StatusCode::CREATED, Json(json!(p))),
-        Ok(None) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Empty response from DB"})),
-        ),
+        Ok(p) => (StatusCode::CREATED, Json(json!(p))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": format!("Could not create package: {}", e)})),
@@ -211,19 +209,13 @@ pub async fn create_version(
         );
     }
 
-    let package: Option<Package> = match state
-        .db
-        .query("SELECT * FROM package WHERE name = $name")
-        .bind(("name", name.clone()))
+    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+        .bind(name)
+        .fetch_optional(&state.db)
         .await
     {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("DB error: {}", e)})),
-            );
-        }
+        Ok(p) => p,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
     };
 
     let package = match package {
@@ -244,54 +236,53 @@ pub async fn create_version(
     }
 
     let pkg_id = package.id.expect("package should have an id");
-    let existing_version: Option<PackageVersion> = match state
-        .db
-        .query("SELECT * FROM package_version WHERE package_id = $pkg_id AND version = $version")
-        .bind(("pkg_id", pkg_id.clone()))
-        .bind(("version", payload.version.clone()))
-        .await
-    {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("DB error: {}", e)})),
-            );
-        }
+    
+    // Check if version exists
+    let existing_count: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM package_versions WHERE package_id = $1 AND version = $2")
+        .bind(pkg_id)
+        .bind(&payload.version)
+        .fetch_one(&state.db)
+        .await {
+        Ok(c) => c,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
     };
 
-    if existing_version.is_some() {
+    if existing_count > 0 {
         return (
             StatusCode::CONFLICT,
             Json(json!({"error": "Version already exists"})),
         );
     }
 
-    let version_record = PackageVersion {
-        id: None,
-        package_id: pkg_id.clone(),
-        version: payload.version,
-        lua_source_url: payload.lua_source_url,
-        created_at: chrono::Utc::now().timestamp(),
-    };
+    let now = chrono::Utc::now().timestamp();
 
-    let created: Result<Option<PackageVersion>, _> = state
-        .db
-        .create("package_version")
-        .content(version_record)
+    // Create version
+    let created_version = sqlx::query_as::<_, PackageVersion>(
+        r#"
+        INSERT INTO package_versions (package_id, version, lua_source_url, created_at)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+        "#
+    )
+    .bind(pkg_id)
+    .bind(payload.version)
+    .bind(payload.lua_source_url)
+    .bind(now)
+    .fetch_one(&state.db)
+    .await;
+
+    // Update package timestamp
+    let _ = sqlx::query("UPDATE packages SET updated_at = $1 WHERE id = $2")
+        .bind(now)
+        .bind(pkg_id)
+        .execute(&state.db)
         .await;
 
-    let _: Result<Option<Package>, _> = state
-        .db
-        .update(("package", pkg_id.id.to_string()))
-        .merge(json!({"updated_at": chrono::Utc::now().timestamp()}))
-        .await;
-
-    match created {
-        Ok(Some(v)) => (StatusCode::CREATED, Json(json!(v))),
-        _ => (
+    match created_version {
+        Ok(v) => (StatusCode::CREATED, Json(json!(v))),
+        Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to create version"})),
+            Json(json!({"error": format!("Failed to create version: {}", e)})),
         ),
     }
 }
@@ -300,19 +291,13 @@ pub async fn list_versions(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let package: Option<Package> = match state
-        .db
-        .query("SELECT * FROM package WHERE name = $name")
-        .bind(("name", name.clone()))
+    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+        .bind(name)
+        .fetch_optional(&state.db)
         .await
     {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("DB error: {}", e)})),
-            );
-        }
+        Ok(p) => p,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
     };
 
     let package = match package {
@@ -326,19 +311,13 @@ pub async fn list_versions(
     };
 
     let pkg_id = package.id.expect("package should have an id");
-    let versions: Vec<PackageVersion> = match state
-        .db
-        .query("SELECT * FROM package_version WHERE package_id = $pkg_id ORDER BY created_at DESC")
-        .bind(("pkg_id", pkg_id.clone()))
+    let versions = match sqlx::query_as::<_, PackageVersion>("SELECT * FROM package_versions WHERE package_id = $1 ORDER BY created_at DESC")
+        .bind(pkg_id)
+        .fetch_all(&state.db)
         .await
     {
-        Ok(mut res) => res.take(0).unwrap_or(vec![]),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("DB error: {}", e)})),
-            );
-        }
+        Ok(v) => v,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
     };
 
     (StatusCode::OK, Json(json!(versions)))
@@ -351,19 +330,13 @@ pub async fn upload_blob(
     body: Bytes,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // 1. Ownership check
-    let package: Option<Package> = match state
-        .db
-        .query("SELECT * FROM package WHERE name = $name")
-        .bind(("name", name.clone()))
+    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+        .bind(name)
+        .fetch_optional(&state.db)
         .await
     {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("DB error: {}", e)})),
-            );
-        }
+        Ok(p) => p,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
     };
 
     let package = match package {
@@ -388,6 +361,22 @@ pub async fn upload_blob(
     hasher.update(&body);
     let hash = format!("{:x}", hasher.finalize());
 
+    // 2.5 Extract README
+    let mut readme_content: Option<String> = None;
+    if let Ok(mut archive) = zip::ZipArchive::new(Cursor::new(&body)) {
+        for i in 0..archive.len() {
+            if let Ok(mut file) = archive.by_index(i) {
+                if file.name().eq_ignore_ascii_case("README.md") {
+                    let mut s = String::new();
+                    if file.read_to_string(&mut s).is_ok() {
+                        readme_content = Some(s);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     // 3. Upload to R2
     if let Err(e) = state.storage.upload_blob(&hash, body.to_vec()).await {
         return (
@@ -396,20 +385,24 @@ pub async fn upload_blob(
         );
     }
 
-    // 4. Update Version record with source URL (pointing to our blob endpoint)
+    // 4. Update Version record
     let pkg_id = package.id.expect("id exists");
     let source_url = format!("/packages/blobs/{}", hash);
 
-    let _: Option<PackageVersion> = match state.db
-        .query("UPDATE package_version SET lua_source_url = $url WHERE package_id = $pkg_id AND version = $version")
-        .bind(("url", source_url))
-        .bind(("pkg_id", pkg_id))
-        .bind(("version", version))
-        .await
-    {
-        Ok(mut res) => res.take(0).unwrap_or(None),
-        Err(_) => None, // We don't strictly care if the update fails for the response, but ideally we'd log it
-    };
+    let result = sqlx::query("UPDATE package_versions SET lua_source_url = $1, readme = $2 WHERE package_id = $3 AND version = $4")
+        .bind(source_url)
+        .bind(readme_content)
+        .bind(pkg_id)
+        .bind(version)
+        .execute(&state.db)
+        .await;
+
+    if let Err(e) = result {
+         return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("DB Update failed: {}", e)})),
+        );
+    }
 
     (
         StatusCode::OK,
