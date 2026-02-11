@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import nextra from "nextra";
 
 const withNextra = nextra({
-  // Nextra 4 options
+  contentDirBasePath: "/docs",
 });
 
 const nextConfig: NextConfig = {

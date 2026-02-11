@@ -11,9 +11,6 @@ const config = {
     link: 'https://github.com/doshibadev/mosaic',
   },
   docsRepositoryBase: 'https://github.com/doshibadev/mosaic/tree/main/website',
-  footer: {
-    text: `Mosaic — Polytoria Package Manager © ${new Date().getFullYear()}`,
-  },
   darkMode: true,
   nextThemes: {
     defaultTheme: 'dark'
