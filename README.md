@@ -8,34 +8,52 @@ A package manager for [Polytoria](https://polytoria.com).
 
 [![MIT License](https://img.shields.io/badge/license-MIT-a78bfa?style=flat-square)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/rust-1.75+-e8e0f0?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![GitHub Release](https://img.shields.io/github/v/release/doshibadev/mosaic?style=flat-square)](https://github.com/doshibadev/mosaic/releases)
 
 </div>
 
 ---
 
-Mosaic lets you install, manage, and share Lua packages for Polytoria projects. It works like [Cargo](https://crates.io) or [npm](https://www.npmjs.com) — but for Polytoria's XML-based project format.
+## What is Mosaic?
 
-There are two parts:
+Stop copy-pasting Lua scripts between projects. Mosaic lets you **install, manage, and share Lua packages** for Polytoria just like [Cargo](https://crates.io) or [npm](https://www.npmjs.com), but actually built for Polytoria's XML-based project format.
 
-- **`mosaic` CLI** — the command-line tool you use to manage packages
-- **Registry** — the server that hosts and serves packages
+Instead of manually dragging ModuleScripts around or hunting through the Polytoria asset store for half-finished models, you get:
+- **Version management**: Pin specific versions, get updates when you want them
+- **Dependency resolution**: Install a package, it installs what it needs
+- **Easy sharing**: Publish your own packages for the community
+- **One command**: `mosaic install logger@1.0.0` instead of hunting through assets
 
-Most people only need the CLI. Both are in this repo.
+It's like npm, but for Polytoria developers who are tired of the manual grind.
 
-## Getting started
+## Quick start
+
+**Install the CLI:**
 
 ```bash
-# Install the CLI
-cargo install mosaic-cli
+# macOS / Linux
+curl -fsSL https://getmosaic.run/install.sh | sh
 
-# Set up a new project
+# Windows (PowerShell)
+irm https://getmosaic.run/install.ps1 | iex
+```
+
+Or grab the latest release from [GitHub Releases](https://github.com/doshibadev/mosaic/releases).
+
+**Use it:**
+
+```bash
+# Create a new project
 mosaic init
 
 # Log in to the registry
 mosaic login
 
-# Add a package
+# Install a package
 mosaic install logger@1.0.0
+
+# Publish your own
+mosaic publish
 ```
 
 Mosaic injects packages as ModuleScripts into your `.poly` file. Use them like this:
@@ -47,15 +65,15 @@ Logger:info("hey, it works")
 
 ## Commands
 
-| Command          | What it does                           |
-| ---------------- | -------------------------------------- |
-| `mosaic init`    | Create a `mosaic.toml` in your project |
-| `mosaic login`   | Authenticate with the registry         |
-| `mosaic install` | Install a package (`name@version`)     |
-| `mosaic search`  | Search the registry                    |
-| `mosaic list`    | Show installed packages                |
-| `mosaic publish` | Upload your package to the registry    |
-| `mosaic remove`  | Uninstall a package                    |
+| Command              | What it does                           |
+| -------------------- | -------------------------------------- |
+| `mosaic init`        | Create a `mosaic.toml` in your project |
+| `mosaic login`       | Authenticate with the registry         |
+| `mosaic install`     | Install a package (`name@version`)     |
+| `mosaic search`      | Search the registry                    |
+| `mosaic list`        | Show installed packages                |
+| `mosaic publish`     | Upload your package to the registry    |
+| `mosaic remove`      | Uninstall a package                    |
 
 ## How it works
 
@@ -80,7 +98,7 @@ Logger:info("hey, it works")
 
 ```
 mosaic/
-├── cli/          # Rust CLI
+├── cli/          # Rust CLI (clap, reqwest, quick-xml)
 ├── registry/     # Axum API server (PostgreSQL + R2)
 ├── website/      # Next.js website & package browser
 ├── research/     # Experiments and test data
@@ -111,9 +129,21 @@ cargo run
 
 ## Status
 
-Mosaic is early but functional. The core loop works — you can init, install, publish, and remove packages. There's still rough edges and missing features, but it's usable if you're building on Polytoria and want something better than copy-pasting scripts.
+Mosaic is **early but functional**. The core loop works: you can init, install, publish, and remove packages. There's still rough edges and missing features, but it's usable if you're building on Polytoria and want something better than copy-pasting scripts.
 
-If you run into problems, [open an issue](https://github.com/doshibadev/mosaic/issues).
+## Contributing
+
+Want to help? We'd love that. Here's how:
+
+1. **Found a bug?** [Open an issue](https://github.com/doshibadev/mosaic/issues) with details
+2. **Have an idea?** [Start a discussion](https://github.com/doshibadev/mosaic/discussions)
+3. **Want to code?** Fork the repo, make your changes, and submit a PR. Make sure to:
+   - Test your changes locally
+   - Keep commits clean and descriptive
+   - Follow the existing code style
+4. **Just starting?** Look for issues labeled `good first issue` — those are beginner-friendly
+
+The codebase is organized by component (CLI, registry, website), so pick what interests you. Questions? Just ask in an issue.
 
 ## License
 
