@@ -19,6 +19,7 @@ A package manager for [Polytoria](https://polytoria.com).
 Stop copy-pasting Lua scripts between projects. Mosaic lets you **install, manage, and share Lua packages** for Polytoria just like [Cargo](https://crates.io) or [npm](https://www.npmjs.com), but actually built for Polytoria's XML-based project format.
 
 Instead of manually dragging ModuleScripts around or hunting through the Polytoria asset store for half-finished models, you get:
+
 - **Version management**: Pin specific versions, get updates when you want them
 - **Dependency resolution**: Install a package, it installs what it needs
 - **Easy sharing**: Publish your own packages for the community
@@ -65,15 +66,15 @@ Logger:info("hey, it works")
 
 ## Commands
 
-| Command              | What it does                           |
-| -------------------- | -------------------------------------- |
-| `mosaic init`        | Create a `mosaic.toml` in your project |
-| `mosaic login`       | Authenticate with the registry         |
-| `mosaic install`     | Install a package (`name@version`)     |
-| `mosaic search`      | Search the registry                    |
-| `mosaic list`        | Show installed packages                |
-| `mosaic publish`     | Upload your package to the registry    |
-| `mosaic remove`      | Uninstall a package                    |
+| Command          | What it does                           |
+| ---------------- | -------------------------------------- |
+| `mosaic init`    | Create a `mosaic.toml` in your project |
+| `mosaic login`   | Authenticate with the registry         |
+| `mosaic install` | Install a package (`name@version`)     |
+| `mosaic search`  | Search the registry                    |
+| `mosaic list`    | Show installed packages                |
+| `mosaic publish` | Upload your package to the registry    |
+| `mosaic remove`  | Uninstall a package                    |
 
 ## How it works
 

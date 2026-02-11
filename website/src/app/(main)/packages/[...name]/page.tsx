@@ -139,7 +139,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
               )}
               <div className="bg-card border border-border rounded-lg p-5">
                 <h3 className="text-sm text-muted-foreground/60 mb-2">Downloads</h3>
-                <p className="text-base text-foreground font-medium">{pkg.download_count.toLocaleString()}</p>
+                <p className="text-base text-foreground font-medium">{(pkg.download_count || 0).toLocaleString()}</p>
               </div>
             </div>
           </div>
