@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: mosaic
+            asset_name: mosaic-linux-amd64
+          - os: windows-latest
+            artifact_name: mosaic.exe
+            asset_name: mosaic-windows-amd64.exe
+          - os: macos-latest
+            artifact_name: mosaic
+            asset_name: mosaic-macos-amd64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build CLI
+        run: cargo build --release --manifest-path cli/Cargo.toml
+
+      - name: Prepare Binary
+        shell: bash
+        run: |
+          cd cli/target/release
+          mv ${{ matrix.artifact_name }} ../../../${{ matrix.asset_name }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
