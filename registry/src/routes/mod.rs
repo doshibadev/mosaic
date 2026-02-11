@@ -6,11 +6,14 @@ use crate::handlers::{
         search_packages, upload_blob,
     },
 };
+use crate::middleware::rate_limit;
 use crate::state::AppState;
 use axum::{
     Router,
+    handler::Handler,
     routing::{get, post},
 };
+use tower_governor::GovernorLayer;
 use tower_http::cors::{Any, CorsLayer};
 
 pub fn create_routes(state: AppState) -> Router {
@@ -19,19 +22,39 @@ pub fn create_routes(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // Rate limit configurations
+    let publish_conf = rate_limit::create_publish_config();
+    let login_conf = rate_limit::create_login_config();
+    let search_conf = rate_limit::create_search_config();
+
     let auth_routes = Router::new()
         .route("/signup", post(signup))
-        .route("/login", post(login));
+        .route(
+            "/login", 
+            post(login.layer(GovernorLayer::new(login_conf)))
+        );
 
     let package_routes = Router::new()
         .route("/", get(list_packages))
-        .route("/", post(create_package))
-        .route("/search", get(search_packages))
+        .route(
+            "/", 
+            post(create_package.layer(GovernorLayer::new(publish_conf.clone())))
+        )
+        .route(
+            "/search", 
+            get(search_packages.layer(GovernorLayer::new(search_conf)))
+        )
         .route("/blobs/{hash}", get(download_blob))
         .route("/{name}", get(get_package))
         .route("/{name}/versions", get(list_versions))
-        .route("/{name}/versions", post(create_version))
-        .route("/{name}/versions/{version}/upload", post(upload_blob));
+        .route(
+            "/{name}/versions", 
+            post(create_version.layer(GovernorLayer::new(publish_conf.clone())))
+        )
+        .route(
+            "/{name}/versions/{version}/upload", 
+            post(upload_blob.layer(GovernorLayer::new(publish_conf.clone())))
+        );
 
     Router::new()
         .route("/health", get(health_check))
