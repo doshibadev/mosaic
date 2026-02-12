@@ -5,6 +5,7 @@ pub mod installer;
 pub mod lockfile;
 pub mod logger;
 pub mod registry;
+pub mod updater;
 pub mod xml_handler;
 
 use clap::Parser;
@@ -122,6 +123,18 @@ async fn main() -> anyhow::Result<()> {
         Commands::Unpublish { package } => {
             registry::unpublish(package).await?;
         }
+
+        Commands::Upgrade => {
+            crate::updater::upgrade().await?;
+        }
+    }
+
+    // Check for updates in the background (fire and forget-ish, or just quick check)
+    // We do this AFTER the command so we don't slow down the actual work,
+    // but before the process exits.
+    if let Err(e) = crate::updater::check_for_updates().await {
+        // Don't crash if update check fails, just log debug
+        Logger::debug(format!("Update check failed: {}", e));
     }
 
     Ok(())

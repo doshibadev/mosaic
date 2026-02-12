@@ -93,4 +93,8 @@ pub enum Commands {
         /// Package name and version (e.g. logger@1.0.0)
         package: String,
     },
+
+    /// Upgrades the Mosaic CLI to the latest version.
+    /// Fetches the latest binary from GitHub Releases and replaces the current executable.
+    Upgrade,
 }

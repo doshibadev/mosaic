@@ -9,10 +9,10 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
-/// Installs a package into the current project, including all its dependencies.
+/// Installs a package.
 ///
-/// Handles both explicit versions (name@version) and latest-version lookup.
-/// Returns the resolved (name, version) tuple so main.rs can update mosaic.toml.
+/// Handles `name` (latest) or `name@version`.
+/// Updates `mosaic.toml` if we succeed, because manually editing TOML is for robots.
 pub async fn install_package(package_query: &str) -> Result<(String, String)> {
     let mut visited = HashSet::new();
     let mut recursion_stack = Vec::new();
@@ -30,12 +30,12 @@ pub async fn install_package(package_query: &str) -> Result<(String, String)> {
     Ok(result)
 }
 
-/// The recursive engine behind install_package.
+/// The brain of the operation.
 ///
-/// 1. Resolves version
-/// 2. Checks for circular dependencies (DFS)
-/// 3. Installs dependencies first
-/// 4. Injects the package itself
+/// 1. Resolves version (registry or manual override).
+/// 2. Checks for circular dependencies (because infinite recursion is only fun in theory).
+/// 3. Installs dependencies first (bottom-up).
+/// 4. Downloads, verifies hash, and injects the package.
 async fn resolve_and_install(
     package_query: &str,
     visited: &mut HashSet<String>,
@@ -106,8 +106,9 @@ async fn resolve_and_install(
         (package_query.to_string(), latest_version)
     };
 
-    // 2. Circular Dependency Check (DFS)
-    // If we're already installing this package in the current branch of the tree, it's a cycle.
+    // 2. Circular Dependency Check
+    // If we see the same package twice in one branch, we bail.
+    // Graphs are hard.
     if recursion_stack.contains(&name) {
         pb.finish_and_clear();
         let mut cycle = recursion_stack.join(" -> ");
@@ -116,7 +117,7 @@ async fn resolve_and_install(
     }
 
     // 3. Skip if already visited
-    // No need to install the same package twice if multiple dependencies point to it.
+    // Efficiency win: don't install the same logger library 5 times.
     if visited.contains(&name) {
         pb.finish_and_clear();
         return Ok((name, version));
@@ -150,8 +151,8 @@ async fn resolve_and_install(
             pb.set_message(format!("Installing dependencies for {}...", name));
             for (dep_name, dep_version) in deps {
                 let dep_query = format!("{}@{}", dep_name, dep_version.as_str().unwrap_or("*"));
-                // Recursively call ourselves. This builds the tree bottom-up.
-                // We pass the lockfile down so nested dependencies get locked too.
+                // Recursion happens here.
+                // We pass the lockfile down so everything gets locked in one go.
                 let (_, resolved_dep_version) = Box::pin(resolve_and_install(
                     &dep_query,
                     visited,
@@ -180,8 +181,8 @@ async fn resolve_and_install(
     let hash = format!("{:x}", hasher.finalize());
 
     if let Some(locked) = lockfile.get(&name) {
-        // If locked version matches, verify the hash.
-        // If user requested a different version (upgrade), we don't check against the old lock.
+        // Security check: if the lockfile says hash X, and we got hash Y,
+        // someone is trying to mess with us (or the registry is broken).
         if locked.version == resolved_version {
             if locked.integrity != hash {
                 pb.finish_and_clear();
@@ -250,7 +251,7 @@ async fn resolve_and_install(
 }
 
 /// Installs everything listed in mosaic.toml.
-/// Useful for CI/CD or when you just cloned a project and need everything.
+/// Useful for CI or when you just cloned a repo and nothing works.
 pub async fn install_all() -> Result<()> {
     let config = crate::config::Config::load()?;
     Logger::header(format!(
@@ -278,8 +279,8 @@ pub async fn install_all() -> Result<()> {
     Ok(())
 }
 
-/// Prints the project config and list of installed packages in a nice table.
-/// Mostly for humans to read—not really for parsing.
+/// Lists installed packages.
+/// Mostly for humans. Robots should parse the lockfile.
 pub async fn list_packages() -> Result<()> {
     let config = crate::config::Config::load()?;
 
@@ -308,8 +309,8 @@ pub async fn list_packages() -> Result<()> {
     Ok(())
 }
 
-/// Syncs all dependencies by re-installing everything.
-/// Basically a wrapper around install_all() with slightly better messaging.
+/// Reinstalls everything to their latest versions.
+/// A glorified `install_all` that ignores your current lockfile versions.
 pub async fn update_all() -> Result<()> {
     Logger::info("Updating all project dependencies to latest versions...");
     
@@ -342,8 +343,8 @@ pub async fn update_all() -> Result<()> {
     Ok(())
 }
 
-/// Removes a package from mosaic.toml and the .poly file.
-/// Does the work in two places because they need to stay in sync.
+/// Nukes a package from mosaic.toml and the .poly file.
+/// We do this in both places so your config doesn't lie to you.
 pub async fn remove_package(name: &str) -> Result<()> {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -366,8 +367,7 @@ pub async fn remove_package(name: &str) -> Result<()> {
     config.save()?;
 
     // Now find the .poly file and remove it from there too.
-    // If the .poly file doesn't exist, that's weird but not a hard error—
-    // the main thing is the config is cleaned up.
+    // If the .poly file doesn't exist, that's weird but not a hard error.
     let entries = fs::read_dir(".")?;
     let mut poly_file_path = None;
     for entry in entries {

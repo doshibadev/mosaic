@@ -39,7 +39,9 @@ async fn get_latest_version(state: &AppState, pkg: &Package) -> String {
 /// No filtering, no search—just returns everything. Useful for browsing.
 /// Each result includes the latest version so clients can see what's current.
 pub async fn list_packages(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
-    let packages = match sqlx::query_as::<_, Package>("SELECT * FROM packages")
+    let packages = match sqlx::query_as::<_, Package>(
+        "SELECT id, name, description, author, repository, created_at, updated_at, download_count, deprecated, deprecation_reason FROM packages"
+    )
         .fetch_all(&state.db)
         .await
     {
@@ -101,7 +103,10 @@ pub async fn search_packages(
 
     let packages = if q.is_empty() {
         // No search query—just return sorted results
-        let query_str = format!("SELECT * FROM packages ORDER BY {} LIMIT $1", order_clause);
+        let query_str = format!(
+            "SELECT id, name, description, author, repository, created_at, updated_at, download_count, deprecated, deprecation_reason FROM packages ORDER BY {} LIMIT $1", 
+            order_clause
+        );
         match sqlx::query_as::<_, Package>(&query_str)
             .bind(limit)
             .fetch_all(&state.db)
@@ -131,7 +136,7 @@ pub async fn search_packages(
 
         let query_str = format!(
             r#"
-            SELECT * FROM packages 
+            SELECT id, name, description, author, repository, created_at, updated_at, download_count, deprecated, deprecation_reason FROM packages 
             WHERE to_tsvector('english', name || ' ' || description) @@ websearch_to_tsquery('english', $1)
             ORDER BY {}
             LIMIT $2
@@ -179,7 +184,9 @@ pub async fn get_package(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+    let package = match sqlx::query_as::<_, Package>(
+        "SELECT id, name, description, author, repository, created_at, updated_at, download_count, deprecated, deprecation_reason FROM packages WHERE name = $1"
+    )
         .bind(name)
         .fetch_optional(&state.db)
         .await
@@ -640,7 +647,9 @@ pub async fn deprecate_package(
     Path(name): Path<String>,
     Json(payload): Json<DeprecatePackageRequest>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+    let package = match sqlx::query_as::<_, Package>(
+        "SELECT id, name, description, author, repository, created_at, updated_at, download_count, deprecated, deprecation_reason FROM packages WHERE name = $1"
+    )
         .bind(&name)
         .fetch_optional(&state.db)
         .await
@@ -703,7 +712,9 @@ pub async fn unpublish_version(
     user: AuthenticatedUser,
     Path((name, version)): Path<(String, String)>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+    let package = match sqlx::query_as::<_, Package>(
+        "SELECT id, name, description, author, repository, created_at, updated_at, download_count, deprecated, deprecation_reason FROM packages WHERE name = $1"
+    )
         .bind(&name)
         .fetch_optional(&state.db)
         .await

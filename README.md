@@ -76,6 +76,7 @@ For full guides on publishing, CLI commands, and the API, visit **[getmosaic.run
 | `mosaic login`   | Authenticate with the registry         |
 | `mosaic install` | Install a package (`name@version`)     |
 | `mosaic update`  | Update all dependencies to latest      |
+| `mosaic upgrade` | Upgrade the Mosaic CLI itself          |
 | `mosaic search`  | Search the registry                    |
 | `mosaic info`    | Show details about a package           |
 | `mosaic list`    | Show installed packages                |
