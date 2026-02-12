@@ -24,6 +24,17 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Enable verbose logging if requested
+    if cli.verbose {
+        if std::env::var("RUST_LOG").is_err() {
+            unsafe {
+                std::env::set_var("RUST_LOG", "debug");
+            }
+        }
+        env_logger::init();
+        Logger::debug("Verbose logging enabled");
+    }
+
     match &cli.command {
         Commands::Init => {
             Logger::banner();
@@ -102,6 +113,10 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Search { query } => {
             registry::search(query.clone()).await?;
+        }
+
+        Commands::Info { package } => {
+            registry::info(package).await?;
         }
     }
 

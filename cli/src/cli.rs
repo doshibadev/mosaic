@@ -14,6 +14,11 @@ pub struct Cli {
     /// `global = true` means it works with any subcommand.
     #[arg(long, global = true)]
     pub api_url: Option<String>,
+
+    /// Enable verbose logging for debugging.
+    /// Prints detailed error messages and other internal info.
+    #[arg(long, short, global = true)]
+    pub verbose: bool,
 }
 
 /// Every command the CLI supports. Pretty much what you'd expect from a package manager.
@@ -71,5 +76,13 @@ pub enum Commands {
     Search {
         /// Search query
         query: String,
+    },
+
+    /// Shows details about a package without installing it.
+    /// Author, description, version... the usual stuff.
+    /// Basically `npm view` but less verbose.
+    Info {
+        /// Package name to look up
+        package: String,
     },
 }

@@ -7,6 +7,7 @@ The `mosaic` command-line interface is your primary tool for interacting with th
 | Option | Description |
 | :--- | :--- |
 | `--api-url <URL>` | Override the default registry URL (default: `https://api.getmosaic.run`). Useful for self-hosting or testing. |
+| `-v, --verbose` | Enable verbose logging. Prints detailed debug information (HTTP requests, internal errors, etc.). |
 | `-h, --help` | Print help information. |
 | `-V, --version` | Print version information. |
 
@@ -127,6 +128,27 @@ mosaic search logger
 
 **Output:**
 Displays a table of matching packages with their latest version, author, and description.
+
+---
+
+### `info`
+
+Displays detailed information about a package.
+
+**Usage:**
+
+```bash
+mosaic info <package_name>
+```
+
+**Example:**
+
+```bash
+mosaic info logger
+```
+
+**Output:**
+Shows the latest version, author, license, repository, description, and list of dependencies. Useful for vetting a package before installing it.
 
 ---
 

@@ -102,4 +102,9 @@ impl Logger {
     pub fn dim<T: Display>(msg: T) -> String {
         msg.to_string().dimmed().to_string()
     }
+
+    /// Prints a debug message. Use sparingly.
+    pub fn debug<T: Display>(msg: T) {
+        println!("{} {}", "[DEBUG]".dimmed(), msg);
+    }
 }

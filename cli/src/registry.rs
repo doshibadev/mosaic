@@ -156,7 +156,7 @@ pub async fn logout() -> Result<()> {
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await;
-        // We ignore the result here because if the server is down, we still 
+        // We ignore the result here because if the server is down, we still
         // want to delete the local credentials anyway.
     }
 
@@ -205,6 +205,120 @@ pub async fn search(query: String) -> Result<()> {
         }
     } else {
         Logger::error("Search failed.");
+    }
+
+    Ok(())
+}
+
+/// Fetches and displays detailed information about a package.
+///
+/// Hits the registry API to get metadata like author, latest version, description, and dependencies.
+/// Think of it as `npm view` or `cargo search` but specific to a single package.
+pub async fn info(package_name: &str) -> Result<()> {
+    let auth = AuthConfig::load()?;
+    let registry_url = auth
+        .registry_url
+        .unwrap_or_else(|| "https://api.getmosaic.run".to_string());
+
+    Logger::info(format!(
+        "Fetching info for {}...",
+        Logger::highlight(package_name)
+    ));
+
+    let client = reqwest::Client::new();
+
+    // 1. Fetch package metadata (name, description, author, etc.)
+    let pkg_res = client
+        .get(format!("{}/packages/{}", registry_url, package_name))
+        .send()
+        .await?;
+
+    if !pkg_res.status().is_success() {
+        if pkg_res.status() == reqwest::StatusCode::NOT_FOUND {
+            Logger::error(format!("Package {} not found in registry.", package_name));
+            return Ok(());
+        }
+        let text = pkg_res.text().await?;
+        return Err(anyhow!("Registry error: {}", text));
+    }
+
+    let pkg: serde_json::Value = pkg_res.json().await?;
+
+    // 2. Fetch versions to list dependencies of the latest one
+    // The main package object has the *latest* version number, but we might want more details
+    // or the specific dependencies for that version.
+    let versions_res = client
+        .get(format!(
+            "{}/packages/{}/versions",
+            registry_url, package_name
+        ))
+        .send()
+        .await?;
+
+    let versions: Vec<serde_json::Value> = versions_res.json().await?;
+
+    // Find the latest version object to get dependencies
+    // We default to "0.0.0" if version field is missing, though the API guarantees it now.
+    let latest_version_str = pkg["version"].as_str().unwrap_or("0.0.0");
+
+    // Locate the specific version object in the array
+    let latest_version_obj = versions
+        .iter()
+        .find(|v| v["version"].as_str() == Some(latest_version_str));
+
+    // --- Display Section ---
+    println!("");
+    // Use standard print if Logger::header is just for sections, but let's stick to the brand.
+    println!(
+        "{}",
+        Logger::highlight(pkg["name"].as_str().unwrap_or(package_name))
+    );
+
+    println!("  {} {}", Logger::brand_text("Latest:"), latest_version_str);
+    println!(
+        "  {} {}",
+        Logger::brand_text("Author:"),
+        pkg["author"].as_str().unwrap_or("unknown")
+    );
+    println!("  {} {}", Logger::brand_text("License:"), "MIT"); // Hardcoded for now until we add license to DB
+
+    if let Some(repo) = pkg["repository"].as_str() {
+        if !repo.is_empty() {
+            println!("  {} {}", Logger::brand_text("Repo:  "), repo);
+        }
+    }
+
+    // Helper to format download count with commas/separators if possible, otherwise just raw.
+    let downloads = pkg["download_count"].as_i64().unwrap_or(0);
+    println!("  {} {}", Logger::brand_text("Downloads:"), downloads);
+
+    println!(
+        "\n  {}",
+        pkg["description"]
+            .as_str()
+            .unwrap_or("No description provided.")
+    );
+    println!("");
+
+    // Dependencies Table
+    if let Some(v_obj) = latest_version_obj {
+        if let Some(deps) = v_obj["dependencies"].as_object() {
+            if !deps.is_empty() {
+                let mut table = Table::new();
+                table.set_header(vec!["Dependency", "Constraint"]);
+
+                for (dep_name, dep_ver) in deps {
+                    table.add_row(vec![
+                        dep_name.to_string(),
+                        dep_ver.as_str().unwrap_or("*").to_string(),
+                    ]);
+                }
+                println!("  Dependencies:");
+                println!("{}", table);
+            } else {
+                println!("  No dependencies.");
+            }
+        }
     }
 
     Ok(())

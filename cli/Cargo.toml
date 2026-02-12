@@ -26,3 +26,5 @@ console = "0.16.2"
 ignore = "0.4.25"
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native", "apple-native", "linux-native"] }
 bytes = "1.11.1"
+env_logger = "0.11.9"
+log = "0.4.29"
