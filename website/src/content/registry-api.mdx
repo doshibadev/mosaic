@@ -1,0 +1,135 @@
+# Registry API Reference
+
+The Mosaic Registry API manages packages, versions, authentication, and storage. It is built with Rust (Axum) and uses PostgreSQL for metadata and Cloudflare R2 for blob storage.
+
+**Base URL:** `https://api.getmosaic.run` (Default)
+
+---
+
+## Authentication
+
+Authentication is handled via **Bearer Tokens**.
+Headers: `Authorization: Bearer <token>`
+
+### `POST /auth/signup`
+Creates a new user account.
+
+**Body:**
+```json
+{
+  "username": "myuser",
+  "password": "mypassword"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "token": "..." // Auto-login token
+}
+```
+
+### `POST /auth/login`
+Authenticates an existing user.
+
+**Body:**
+```json
+{
+  "username": "myuser",
+  "password": "mypassword"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "token": "..."
+}
+```
+
+### `POST /auth/logout`
+Invalidates the current session token.
+
+**Headers:** `Authorization: Bearer <token>`
+
+---
+
+## Packages
+
+### `GET /packages`
+Lists all packages.
+
+**Response (200 OK):**
+```json
+[
+  {
+    "name": "logger",
+    "version": "1.0.0", // Latest version
+    "description": "A simple logger",
+    "author": "doshibadev",
+    "download_count": 42
+    // ...
+  }
+]
+```
+
+### `POST /packages`
+Creates a new package (metadata only).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Body:**
+```json
+{
+  "name": "my-package",
+  "description": "My cool package",
+  "repository": "https://github.com/me/my-package"
+}
+```
+
+### `GET /packages/search`
+Searches for packages.
+
+**Query Parameters:**
+- `q`: Search query string.
+- `sort`: `downloads`, `newest`, or `updated`.
+- `limit`: Number of results (max 100).
+
+---
+
+## Versions & Blobs
+
+### `GET /packages/:name`
+Gets details for a specific package.
+
+### `GET /packages/:name/versions`
+Lists all versions for a package.
+
+### `POST /packages/:name/versions`
+Registers a new version.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Body:**
+```json
+{
+  "version": "1.0.1",
+  "lua_source_url": "tbd", // Placeholder
+  "dependencies": {
+    "other-pkg": "^1.0.0"
+  }
+}
+```
+
+### `POST /packages/:name/versions/:version/upload`
+Uploads the package source code (zip blob).
+
+**Headers:** `Authorization: Bearer <token>`
+**Body:** Raw binary data (zip file).
+
+**Note:** This endpoint expects the raw body bytes, not multipart/form-data.
+
+### `GET /packages/blobs/:hash`
+Downloads a package blob.
+
+**Response:** Binary stream (`application/octet-stream`).

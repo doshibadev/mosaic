@@ -2,6 +2,7 @@ use crate::auth::AuthConfig;
 use crate::config::Config;
 use crate::logger::Logger;
 use anyhow::{Context, Result, anyhow};
+use bytes::Bytes;
 use comfy_table::Table;
 use ignore::WalkBuilder;
 use inquire::{Password, Text};
@@ -402,11 +403,10 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Downloads a package from the registry and extracts the first .lua file.
-///
-/// This is what `mosaic install` calls under the hood. Fetches the version metadata,
-/// grabs the download URL, fetches the zip, and extracts the Lua source code.
-pub async fn download_from_registry(name: &str, version: &str) -> Result<String> {
+/// Downloads a package from the registry.
+/// Returns the raw bytes of the zip blob and the resolved version.
+/// We return raw bytes so the installer can verify the SHA256 hash before extraction.
+pub async fn download_from_registry(name: &str, version: &str) -> Result<(Bytes, String)> {
     let auth = AuthConfig::load()?;
     let registry_url = auth
         .registry_url
@@ -437,10 +437,11 @@ pub async fn download_from_registry(name: &str, version: &str) -> Result<String>
         .await?;
 
     let bytes = blob_res.bytes().await?;
+    Ok((bytes, version.to_string()))
+}
 
-    // Extract the first .lua file from the zip.
-    // Assumes there's at least one Lua file in the package. If there's multiple,
-    // we just return the first one we find. This might be a dumb assumption someday.
+/// Helper to extract the main Lua file from a package zip.
+pub fn extract_lua_from_bytes(bytes: &[u8]) -> Result<String> {
     let reader = Cursor::new(bytes);
     let mut zip = zip::ZipArchive::new(reader)?;
 

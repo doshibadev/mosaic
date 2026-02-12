@@ -81,4 +81,16 @@ impl StorageService {
         let data = output.body.collect().await?.into_bytes();
         Ok(data.to_vec())
     }
+
+    /// Deletes a package blob from R2.
+    /// Used for rolling back failed uploads.
+    pub async fn delete_blob(&self, hash: &str) -> anyhow::Result<()> {
+        self.client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(format!("blobs/{}", hash))
+            .send()
+            .await?;
+        Ok(())
+    }
 }

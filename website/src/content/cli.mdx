@@ -1,0 +1,209 @@
+# CLI Reference
+
+The `mosaic` command-line interface is your primary tool for interacting with the Mosaic ecosystem.
+
+## Global Options
+
+| Option | Description |
+| :--- | :--- |
+| `--api-url <URL>` | Override the default registry URL (default: `https://api.getmosaic.run`). Useful for self-hosting or testing. |
+| `-h, --help` | Print help information. |
+| `-V, --version` | Print version information. |
+
+---
+
+## Commands
+
+### `init`
+
+Initializes a new Mosaic project in the current directory.
+
+```bash
+mosaic init
+```
+
+**What it does:**
+- Creates a `mosaic.toml` configuration file.
+- Sets the project name based on the directory name.
+- Sets the version to `0.1.0`.
+
+---
+
+### `install`
+
+Installs dependencies into your project.
+
+**Usage:**
+
+```bash
+# Install a specific package (latest version)
+mosaic install <package_name>
+
+# Install a specific version
+mosaic install <package_name>@<version>
+
+# Install all dependencies listed in mosaic.toml
+mosaic install
+```
+
+**What it does:**
+1. Resolves the package version from the registry.
+2. Checks for circular dependencies.
+3. Downloads the package source (verified with SHA256).
+4. Recursively installs any dependencies.
+5. Injects the package as a `ModuleScript` into your `.poly` file (in `ScriptService`).
+6. Updates `mosaic.toml` and `mosaic.lock`.
+
+**Example:**
+
+```bash
+mosaic install logger@1.0.0
+```
+
+---
+
+### `remove`
+
+Removes a package from your project.
+
+**Usage:**
+
+```bash
+mosaic remove <package_name>
+```
+
+**What it does:**
+1. Removes the dependency from `mosaic.toml`.
+2. Removes the `ModuleScript` from your `.poly` file.
+
+---
+
+### `update`
+
+Updates all dependencies to their latest compatible versions.
+
+**Usage:**
+
+```bash
+mosaic update
+```
+
+**What it does:**
+1. Checks the registry for newer versions of installed packages.
+2. Re-installs them (updating the `.poly` file and `mosaic.lock`).
+
+---
+
+### `list`
+
+Lists all installed packages in the current project.
+
+**Usage:**
+
+```bash
+mosaic list
+```
+
+**Output:**
+Displays a table of package names and their configured versions/queries.
+
+---
+
+### `search`
+
+Searches the registry for packages.
+
+**Usage:**
+
+```bash
+mosaic search <query>
+```
+
+**Example:**
+
+```bash
+mosaic search logger
+```
+
+**Output:**
+Displays a table of matching packages with their latest version, author, and description.
+
+---
+
+### `login`
+
+Authenticates you with the Mosaic registry.
+
+**Usage:**
+
+```bash
+mosaic login
+```
+
+**What it does:**
+1. Prompts for your username and password.
+2. Retrieves an authentication token from the registry.
+3. Securely stores the token in your system's keyring (Windows Credential Manager, macOS Keychain, etc.).
+4. Saves your username and registry URL to `~/.mosaic/auth.json` (or equivalent).
+
+---
+
+### `logout`
+
+Logs you out of the registry.
+
+**Usage:**
+
+```bash
+mosaic logout
+```
+
+**What it does:**
+1. Invalidates your token on the server.
+2. Removes credentials from your system keyring.
+3. Clears local authentication config.
+
+---
+
+### `signup`
+
+Creates a new account on the registry.
+
+**Usage:**
+
+```bash
+mosaic signup
+```
+
+**What it does:**
+1. Prompts for a new username and password.
+2. Creates the account.
+3. Automatically logs you in if successful.
+
+---
+
+### `publish`
+
+Publishes your package to the registry.
+
+**Usage:**
+
+```bash
+# Publish with the version defined in mosaic.toml
+mosaic publish
+
+# Publish with a specific version override
+mosaic publish --version <version>
+```
+
+**Prerequisites:**
+- You must be logged in (`mosaic login`).
+- You must have a `mosaic.toml`.
+- You must be the author of the package (if updating).
+
+**What it does:**
+1. **Packaging:** Zips up your project files (respecting `.gitignore` and `.mosaicignore`).
+2. **Registration:** Registers the new version with the registry API.
+3. **Upload:** Uploads the zip file to the registry's storage.
+
+**Note:** `node_modules`, `target`, and hidden files (starting with `.`) are automatically ignored.

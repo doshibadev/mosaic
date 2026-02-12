@@ -1,0 +1,73 @@
+# Self-Hosting
+
+Mosaic is open-source, so you can run your own registry if you want private packages or total control.
+
+## Prerequisites
+
+- **Rust** (latest stable)
+- **PostgreSQL** (or a connection string to one)
+- **S3-Compatible Storage** (AWS S3, Cloudflare R2, MinIO, etc.)
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/doshibadev/mosaic.git
+cd mosaic
+```
+
+## 2. Configure the Registry
+
+Create a `.env` file in the `registry/` directory:
+
+```env
+# Server
+PORT=3000
+RUST_LOG=info
+
+# Database (PostgreSQL)
+DATABASE_URL=postgres://user:password@localhost:5432/mosaic
+
+# Storage (S3/R2)
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com/mosaic-bucket
+# Note: The code currently expects R2-style endpoints or standard S3.
+```
+
+## 3. Run the Registry
+
+```bash
+cd registry
+cargo run --release
+```
+
+The server should start on port 3000.
+
+## 4. Configure the CLI
+
+Tell your local CLI to use your new registry instead of the public one.
+
+**Option A: Environment Variable**
+
+```bash
+export MOSAIC_REGISTRY_URL="http://localhost:3000"
+mosaic login
+```
+
+**Option B: CLI Flag**
+
+```bash
+mosaic login --api-url "http://localhost:3000"
+```
+
+## 5. Running the Website (Optional)
+
+If you want the UI as well:
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
+You'll need to update the API endpoints in `website/src/lib/registry.ts` to point to your local instance.

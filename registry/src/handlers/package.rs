@@ -529,6 +529,15 @@ pub async fn upload_blob(
         .await;
 
     if let Err(e) = result {
+        tracing::error!("DB Update failed: {}. Initiating rollback for blob {}", e, hash);
+        
+        // Rollback: delete the uploaded blob to prevent orphaned files
+        if let Err(cleanup_err) = state.storage.delete_blob(&hash).await {
+            tracing::error!("CRITICAL: Rollback failed for blob {}: {}", hash, cleanup_err);
+        } else {
+            tracing::info!("Rollback successful: blob {} deleted.", hash);
+        }
+
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": format!("DB Update failed: {}", e)})),

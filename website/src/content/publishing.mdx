@@ -1,0 +1,91 @@
+# Publishing Packages
+
+Sharing your code with the community is the heart of Mosaic. This guide will walk you through creating and publishing your first package.
+
+## 1. Preparation
+
+First, make sure you have a Mosaic account:
+
+```bash
+mosaic signup
+# or
+mosaic login
+```
+
+## 2. Initialize a Package
+
+Navigate to the folder containing your Lua script or module.
+
+```bash
+mosaic init
+```
+
+This creates a `mosaic.toml` file. Open it and check the details:
+
+```toml
+[package]
+name = "my-cool-package"
+version = "0.1.0"
+```
+
+**Naming Rules:**
+- Use `kebab-case` (e.g., `my-cool-package`, not `MyCoolPackage`).
+- Must be unique in the registry.
+
+## 3. Structure Your Code
+
+Mosaic zips up your current directory when publishing. Ensure your main Lua logic is accessible.
+
+**Recommended Structure:**
+```
+my-package/
+├── mosaic.toml
+├── init.lua       # Your main entry point (optional convention)
+├── README.md      # Documentation (shown on the website)
+└── .mosaicignore  # Files to exclude
+```
+
+## 4. Ignoring Files
+
+You don't want to publish your `.git` folder, `node_modules`, or secrets. Create a `.mosaicignore` file (syntax is the same as `.gitignore`).
+
+**Example `.mosaicignore`:**
+```
+.git
+.env
+secret.txt
+test_scripts/
+```
+
+*Note: `node_modules`, `target`, and `mosaic.toml` are automatically ignored by the CLI.*
+
+## 5. Publish
+
+When you're ready, run:
+
+```bash
+mosaic publish
+```
+
+This will:
+1. verify you are logged in.
+2. package your files.
+3. upload them to the registry.
+
+## 6. Updating Your Package
+
+To release a new version:
+
+1. Update the version in `mosaic.toml` (e.g., `0.1.0` -> `0.1.1`).
+2. Run `mosaic publish`.
+
+Alternatively, you can override the version from the CLI:
+
+```bash
+mosaic publish --version 0.1.1
+```
+
+**SemVer:** Mosaic encourages [Semantic Versioning](https://semver.org/).
+- **Major (1.0.0):** Breaking changes.
+- **Minor (0.1.0):** New features (backwards compatible).
+- **Patch (0.0.1):** Bug fixes.

@@ -1,18 +1,33 @@
+---
+title: Introduction
+description: Mosaic is a modern package manager for Polytoria.
+---
+
 # Introduction
- 
-Welcome to the Mosaic Documentation!
 
-## What is Mosaic?
+**Mosaic** is a modern package manager for [Polytoria](https://polytoria.com), a user-generated content platform.
 
-Mosaic is a package manager for **Polytoria**. It allows you to install, manage, and share Lua packages for your Polytoria projects with ease.
+## The Problem
 
-## Key Features
+Sharing code on Polytoria has traditionally been a manual process:
+- Copy-pasting scripts from Discord or Forums.
+- Manually dragging `ModuleScript` assets from the toolbox.
+- losing track of versions and updates.
+- "Dependency hell" when one script needs another.
 
-- **CLI-first workflow**: Manage your dependencies from the command line.
-- **XML Injection**: Automatically adds ModuleScripts to your `.poly` files.
-- **Secure Registry**: Packages are hosted securely and verified with SHA256 hashes.
-- **Semantic Versioning**: (Coming Soon) robust version management.
+## The Solution
 
-## How it Works
+Mosaic brings the developer experience of tools like `npm` or `cargo` to Polytoria:
 
-Mosaic works by reading a `mosaic.toml` file in your project root and injecting the required packages into your Polytoria project's `ScriptService`.
+- **📦 Dependency Management:** Declare packages in a simple `mosaic.toml` file.
+- **🚀 One-Command Install:** `mosaic install` fetches everything you need.
+- **🔒 Version Locking:** Ensure everyone on your team uses the exact same versions.
+- **💉 Direct Injection:** Mosaic modifies your `.poly` project file directly—no manual dragging required.
+
+## Get Started
+
+Ready to dive in?
+
+- [**Install the CLI**](/docs/getting-started)
+- [**Browse Packages**](/packages)
+- [**Publish Your Own**](/docs/publishing)

@@ -2,6 +2,7 @@ pub mod auth;
 pub mod cli;
 pub mod config;
 pub mod installer;
+pub mod lockfile;
 pub mod logger;
 pub mod registry;
 pub mod xml_handler;

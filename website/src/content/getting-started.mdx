@@ -4,7 +4,21 @@ Learn how to get up and running with Mosaic in minutes.
 
 ## Installation
 
-Currently, Mosaic is in early development. You can install the CLI from source:
+### Automated Install (Recommended)
+
+**Windows (PowerShell):**
+```powershell
+irm https://getmosaic.run/install.ps1 | iex
+```
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://getmosaic.run/install.sh | sh
+```
+
+### Build from Source
+
+If you prefer to build from source (Rust required):
 
 ```bash
 git clone https://github.com/doshibadev/mosaic.git
@@ -12,31 +26,51 @@ cd mosaic/cli
 cargo install --path .
 ```
 
-## Quick Start
+---
 
-### 1. Initialize your project
+## Your First Project
 
-Go to your Polytoria project folder and run:
+### 1. Initialize
+
+Navigate to your Polytoria project folder (where your `.poly` file is) and run:
 
 ```bash
 mosaic init
 ```
 
-This will create a `mosaic.toml` file.
+This creates a `mosaic.toml` file:
 
-### 2. Install a package
+```toml
+[package]
+name = "my-project"
+version = "0.1.0"
+```
 
-Try installing the `logger` package:
+### 2. Install a Package
+
+Let's install a logging library.
 
 ```bash
 mosaic install logger
 ```
 
-### 3. Use the package in Lua
+Mosaic will:
+1. Download the `logger` package.
+2. Inject it into your `.poly` file under `ScriptService`.
+3. Add it to `mosaic.toml`.
 
-In your Polytoria script, you can now require the package:
+### 3. Use it in Code
+
+Open your Polytoria project. You can now require the module just like any other:
 
 ```lua
+-- The package is injected into ScriptService with its package name
 local Logger = require(game.ScriptService.logger)
-Logger.info("Hello from Mosaic!")
+
+Logger:info("Hello from Mosaic!")
 ```
+
+## Next Steps
+
+- Explore the [CLI Reference](/docs/cli) to see all commands.
+- Learn how to [Publish a Package](/docs/publishing).

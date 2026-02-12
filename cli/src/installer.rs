@@ -1,9 +1,11 @@
+use crate::lockfile::{LockedPackage, Lockfile};
 use crate::logger::Logger;
 use crate::registry;
 use crate::xml_handler;
 use anyhow::{Result, anyhow};
 use comfy_table::Table;
 use indicatif::{ProgressBar, ProgressStyle};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
@@ -14,12 +16,18 @@ use std::fs;
 pub async fn install_package(package_query: &str) -> Result<(String, String)> {
     let mut visited = HashSet::new();
     let mut recursion_stack = Vec::new();
+    let mut lockfile = Lockfile::load()?;
 
-    // We start the recursive process.
-    // The first package is the one the user explicitly requested.
-    let (name, version) = resolve_and_install(package_query, &mut visited, &mut recursion_stack).await?;
+    let result = resolve_and_install(
+        package_query,
+        &mut visited,
+        &mut recursion_stack,
+        &mut lockfile,
+    )
+    .await?;
 
-    Ok((name, version))
+    lockfile.save()?;
+    Ok(result)
 }
 
 /// The recursive engine behind install_package.
@@ -32,6 +40,7 @@ async fn resolve_and_install(
     package_query: &str,
     visited: &mut HashSet<String>,
     recursion_stack: &mut Vec<String>,
+    lockfile: &mut Lockfile,
 ) -> Result<(String, String)> {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -116,6 +125,8 @@ async fn resolve_and_install(
         .find(|v| v["version"].as_str() == Some(&version))
         .ok_or_else(|| anyhow!("Version {} not found for {}", version, name))?;
 
+    let mut dependencies_map = HashMap::new();
+
     // Extract dependencies if any
     if let Some(deps) = version_meta["dependencies"].as_object() {
         if !deps.is_empty() {
@@ -123,7 +134,15 @@ async fn resolve_and_install(
             for (dep_name, dep_version) in deps {
                 let dep_query = format!("{}@{}", dep_name, dep_version.as_str().unwrap_or("*"));
                 // Recursively call ourselves. This builds the tree bottom-up.
-                Box::pin(resolve_and_install(&dep_query, visited, recursion_stack)).await?;
+                // We pass the lockfile down so nested dependencies get locked too.
+                let (_, resolved_dep_version) = Box::pin(resolve_and_install(
+                    &dep_query,
+                    visited,
+                    recursion_stack,
+                    lockfile,
+                ))
+                .await?;
+                dependencies_map.insert(dep_name.clone(), resolved_dep_version);
             }
         }
     }
@@ -135,7 +154,42 @@ async fn resolve_and_install(
         Logger::brand_text(&version)
     ));
 
-    let lua_code = registry::download_from_registry(&name, &version).await?;
+    // Get the raw bytes so we can hash them
+    let (bytes, resolved_version) = registry::download_from_registry(&name, &version).await?;
+
+    // 5a. Verify Hash
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let hash = format!("{:x}", hasher.finalize());
+
+    if let Some(locked) = lockfile.get(&name) {
+        // If locked version matches, verify the hash.
+        // If user requested a different version (upgrade), we don't check against the old lock.
+        if locked.version == resolved_version {
+            if locked.integrity != hash {
+                pb.finish_and_clear();
+                return Err(anyhow!(
+                    "Security Alert: Hash mismatch for {}! Locked: {}, Downloaded: {}. This could be a supply chain attack.",
+                    name,
+                    locked.integrity,
+                    hash
+                ));
+            }
+        }
+    }
+
+    // Update lockfile with the new/verified package
+    lockfile.insert(
+        name.clone(),
+        LockedPackage {
+            version: resolved_version.clone(),
+            integrity: hash,
+            dependencies: dependencies_map,
+        },
+    );
+
+    // Extract Lua code from the verified bytes
+    let lua_code = registry::extract_lua_from_bytes(&bytes)?;
 
     // Find the .poly file.
     let entries = fs::read_dir(".")?;
@@ -171,11 +225,11 @@ async fn resolve_and_install(
     Logger::success(format!(
         "Installed {}@{} into {}",
         Logger::brand_text(&name),
-        Logger::brand_text(&version),
+        Logger::brand_text(&resolved_version),
         Logger::highlight(poly_path.to_string_lossy())
     ));
 
-    Ok((name, version))
+    Ok((name, resolved_version))
 }
 
 /// Installs everything listed in mosaic.toml.
@@ -187,13 +241,22 @@ pub async fn install_all() -> Result<()> {
         config.package.name
     ));
 
-    for (name, query) in &config.dependencies {
-        Logger::command("mosaic", format!("Processing {} ({})", name, query));
-        // Just install what's already in the config. No need to update anything.
-        // query is usually a version constraint like "1.0.0" or "^1.2.0"
-        let _ = install_package(&format!("{}@{}", name, query)).await?;
+    if config.dependencies.is_empty() {
+        Logger::info("No dependencies to install.");
+        return Ok(());
     }
 
+    let mut visited = HashSet::new();
+    let mut recursion_stack = Vec::new();
+    let mut lockfile = Lockfile::load()?;
+
+    for (name, query) in &config.dependencies {
+        Logger::command("mosaic", format!("Processing {} ({})", name, query));
+        let dep_query = format!("{}@{}", name, query);
+        resolve_and_install(&dep_query, &mut visited, &mut recursion_stack, &mut lockfile).await?;
+    }
+
+    lockfile.save()?;
     Logger::success("All dependencies are up to date!");
     Ok(())
 }
@@ -231,8 +294,34 @@ pub async fn list_packages() -> Result<()> {
 /// Syncs all dependencies by re-installing everything.
 /// Basically a wrapper around install_all() with slightly better messaging.
 pub async fn update_all() -> Result<()> {
-    Logger::info("Syncing project dependencies...");
-    install_all().await?;
+    Logger::info("Updating all project dependencies to latest versions...");
+    
+    let mut config = crate::config::Config::load()?;
+    let dependencies: Vec<String> = config.dependencies.keys().cloned().collect();
+
+    if dependencies.is_empty() {
+        Logger::info("No dependencies to update.");
+        return Ok(());
+    }
+
+    let mut visited = HashSet::new();
+    let mut recursion_stack = Vec::new();
+    let mut lockfile = Lockfile::load()?;
+
+    for name in dependencies {
+        Logger::command("mosaic", format!("Updating {}...", name));
+        
+        // Passing &name without @version forces resolution to latest
+        let (_, new_version) = resolve_and_install(&name, &mut visited, &mut recursion_stack, &mut lockfile).await?;
+        
+        // Update manifest
+        config.add_dependency(&name, &new_version);
+    }
+
+    config.save()?;
+    lockfile.save()?;
+    
+    Logger::success("All dependencies updated to latest versions!");
     Ok(())
 }
 
