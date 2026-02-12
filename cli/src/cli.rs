@@ -85,4 +85,12 @@ pub enum Commands {
         /// Package name to look up
         package: String,
     },
+
+    /// Removes a version from the registry.
+    /// Only works within 24 hours of publishing and if no one else depends on it.
+    /// Use this if you accidentally uploaded your cat's photos instead of code.
+    Unpublish {
+        /// Package name and version (e.g. logger@1.0.0)
+        package: String,
+    },
 }

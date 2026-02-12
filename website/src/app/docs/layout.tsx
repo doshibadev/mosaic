@@ -10,7 +10,7 @@ export const metadata = {
   description: 'Documentation for Mosaic - The Polytoria Package Manager'
 }
 
-const banner = <Banner storageKey="mosaic-beta">Mosaic is currently in beta. 🎉</Banner>
+const banner = <Banner storageKey="mosaic-beta">Mosaic is currently in beta.</Banner>
 
 const navbar = (
   <Navbar

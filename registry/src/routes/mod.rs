@@ -2,8 +2,8 @@ use crate::handlers::{
     auth::{login, logout, signup},
     health::health_check,
     package::{
-        create_package, create_version, download_blob, get_package, list_packages, list_versions,
-        search_packages, upload_blob,
+        create_package, create_version, deprecate_package, download_blob, get_package,
+        list_packages, list_versions, search_packages, unpublish_version, upload_blob,
     },
 };
 use crate::middleware::rate_limit;
@@ -12,7 +12,7 @@ use axum::{
     Router,
     handler::Handler,
     extract::DefaultBodyLimit,
-    routing::{get, post},
+    routing::{get, post, delete},
 };
 use tower_governor::GovernorLayer;
 use tower_http::cors::{Any, CorsLayer};
@@ -48,11 +48,13 @@ pub fn create_routes(state: AppState) -> Router {
         )
         .route("/blobs/{hash}", get(download_blob))
         .route("/{name}", get(get_package))
+        .route("/{name}/deprecate", post(deprecate_package)) // New route
         .route("/{name}/versions", get(list_versions))
         .route(
             "/{name}/versions", 
             post(create_version.layer(GovernorLayer::new(publish_conf.clone())))
         )
+        .route("/{name}/versions/{version}", delete(unpublish_version))
         .route(
             "/{name}/versions/{version}/upload", 
             // 5MB limit. Lua scripts are tiny text files. 

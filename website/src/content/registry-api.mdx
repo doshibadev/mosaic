@@ -67,7 +67,10 @@ Lists all packages.
     "version": "1.0.0", // Latest version
     "description": "A simple logger",
     "author": "doshibadev",
-    "download_count": 42
+    "download_count": 42,
+    "license": "MIT",
+    "deprecated": false,
+    "deprecation_reason": null
     // ...
   }
 ]
@@ -94,6 +97,19 @@ Searches for packages.
 - `q`: Search query string.
 - `sort`: `downloads`, `newest`, or `updated`.
 - `limit`: Number of results (max 100).
+
+### `POST /packages/:name/deprecate`
+Sets the deprecation status of a package.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Body:**
+```json
+{
+  "deprecated": true,
+  "reason": "This package is no longer maintained. Use 'new-logger' instead."
+}
+```
 
 ---
 

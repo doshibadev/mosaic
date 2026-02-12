@@ -43,25 +43,25 @@ impl Logger {
     /// Prints an info message with a blue bullet point.
     /// Use this for general information that doesn't fit the other categories.
     pub fn info<T: Display>(msg: T) {
-        println!("{} {}", "•".truecolor(14, 173, 221).bold(), msg);
+        println!("{} {}", "*".truecolor(14, 173, 221).bold(), msg);
     }
 
-    /// Prints a success message with a green checkmark.
-    /// Feels good when operations complete. Users expect this emoji.
+    /// Prints a success message with a green indicator.
+    /// Feels good when operations complete.
     pub fn success<T: Display>(msg: T) {
-        println!("{} {}", "✔".green().bold(), msg);
+        println!("{} {}", "[v]".green().bold(), msg);
     }
 
-    /// Prints an error message with a red X.
+    /// Prints an error message.
     /// Something went wrong and the user needs to know.
     pub fn error<T: Display>(msg: T) {
-        println!("{} {}", "✖".red().bold(), msg);
+        println!("{} {}", "[x]".red().bold(), msg);
     }
 
-    /// Prints a warning with a yellow warning symbol.
+    /// Prints a warning.
     /// Use sparingly—overuse makes people ignore warnings.
     pub fn warn<T: Display>(msg: T) {
-        println!("{} {}", "⚠".yellow().bold(), msg);
+        println!("{} {}", "[!]".yellow().bold(), msg);
     }
 
     /// Prints a section header in purple with underline.

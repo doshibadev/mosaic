@@ -135,5 +135,33 @@ pub async fn connect() -> Result<DB> {
     .execute(&pool)
     .await;
 
+    // 9. Deprecation
+    // Allows authors to mark packages as deprecated.
+    let _ = sqlx::query(
+        r#"
+        ALTER TABLE packages ADD COLUMN IF NOT EXISTS deprecated BOOLEAN NOT NULL DEFAULT FALSE;
+    "#,
+    )
+    .execute(&pool)
+    .await;
+
+    let _ = sqlx::query(
+        r#"
+        ALTER TABLE packages ADD COLUMN IF NOT EXISTS deprecation_reason TEXT;
+    "#,
+    )
+    .execute(&pool)
+    .await;
+
+    // 10. License
+    // Detected license from LICENSE file (SPDX identifier or "Custom").
+    let _ = sqlx::query(
+        r#"
+        ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS license TEXT;
+    "#,
+    )
+    .execute(&pool)
+    .await;
+
     Ok(pool)
 }

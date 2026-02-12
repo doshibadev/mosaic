@@ -14,6 +14,9 @@ pub struct Package {
     pub updated_at: i64,
     #[serde(default)] 
     pub download_count: i64,
+    #[serde(default)]
+    pub deprecated: bool,
+    pub deprecation_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -23,6 +26,7 @@ pub struct PackageVersion {
     pub version: String,
     pub lua_source_url: String,
     pub readme: Option<String>,
+    pub license: Option<String>,
     pub created_at: i64,
     pub dependencies: serde_json::Value,
 }
@@ -33,6 +37,12 @@ pub struct PublishVersionRequest {
     pub lua_source_url: String,
     #[serde(default = "empty_deps")]
     pub dependencies: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeprecatePackageRequest {
+    pub deprecated: bool,
+    pub reason: Option<String>,
 }
 
 fn empty_deps() -> HashMap<String, String> {

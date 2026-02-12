@@ -42,8 +42,12 @@ my-package/
 ├── mosaic.toml
 ├── init.lua       # Your main entry point (optional convention)
 ├── README.md      # Documentation (shown on the website)
+├── LICENSE        # Your license file (MIT, Apache, etc.)
 └── .mosaicignore  # Files to exclude
 ```
+
+**License Detection:**
+Mosaic automatically scans your package for a `LICENSE`, `LICENSE.md`, or `LICENSE.txt` file. It uses an industry-standard detection engine (`askalono`) to identify your license and display it on the registry. If no license is found, it will be marked as "None".
 
 ## 4. Ignoring Files
 
@@ -68,9 +72,10 @@ mosaic publish
 ```
 
 This will:
-1. verify you are logged in.
-2. package your files.
-3. upload them to the registry.
+1. Verify you are logged in.
+2. **Display a summary** of all files to be included (with total size).
+3. **Ask for confirmation** before proceeding.
+4. Package your files and upload them to the registry.
 
 ## 6. Updating Your Package
 

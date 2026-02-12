@@ -81,6 +81,23 @@ async fn resolve_and_install(
         }
 
         let pkg: serde_json::Value = res.json().await?;
+
+        // Check for deprecation
+        if pkg["deprecated"].as_bool().unwrap_or(false) {
+            let reason = pkg["deprecation_reason"]
+                .as_str()
+                .unwrap_or("No reason provided.");
+            
+            // Suspend spinner to print warning clearly
+            pb.suspend(|| {
+                Logger::warn(format!(
+                    "Package {} is deprecated: {}",
+                    Logger::highlight(package_query),
+                    reason
+                ));
+            });
+        }
+
         let latest_version = pkg["version"]
             .as_str()
             .ok_or_else(|| anyhow!("Could not determine latest version"))?

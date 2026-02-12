@@ -49,8 +49,9 @@ mosaic install
 
 **What it does:**
 1. Resolves the package version from the registry.
-2. Checks for circular dependencies.
-3. Downloads the package source (verified with SHA256).
+2. **Checks for deprecation:** If the package is deprecated, a warning is displayed with the author's reason.
+3. Checks for circular dependencies.
+4. Downloads the package source (verified with SHA256).
 4. Recursively installs any dependencies.
 5. Injects the package as a `ModuleScript` into your `.poly` file (in `ScriptService`).
 6. Updates `mosaic.toml` and `mosaic.lock`.
@@ -149,6 +150,26 @@ mosaic info logger
 
 **Output:**
 Shows the latest version, author, license, repository, description, and list of dependencies. Useful for vetting a package before installing it.
+
+---
+
+### `unpublish`
+
+Removes a specific version of a package from the registry.
+
+**Usage:**
+
+```bash
+mosaic unpublish <package_name>@<version>
+```
+
+**Policy:**
+To prevent "left-pad" style incidents and maintain registry stability, unpublishing is restricted:
+1. **Time Limit:** You can only unpublish a version within **24 hours** of its initial publish.
+2. **Dependents:** You cannot unpublish a version if other packages in the registry already depend on it.
+3. **Ownership:** Only the original author can unpublish.
+
+If you need to discourage use of an older or broken package after these limits, use `mosaic deprecate` (via the API) instead.
 
 ---
 

@@ -187,7 +187,7 @@ function PackageCard({ pkg }: { pkg: RegistryPackage }) {
           {pkg.author}
         </div>
         <div className="flex items-center gap-1">
-           ⬇ {pkg.download_count?.toLocaleString() || 0}
+           Downloads: {pkg.download_count?.toLocaleString() || 0}
         </div>
         {pkg.updated_at && (
           <span>{new Date(pkg.updated_at * 1000).toLocaleDateString()}</span>

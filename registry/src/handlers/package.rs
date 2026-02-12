@@ -1,5 +1,6 @@
+use askalono::Store;
 use crate::middleware::auth::AuthenticatedUser;
-use crate::models::package::{Package, PackageVersion, PublishVersionRequest};
+use crate::models::package::{DeprecatePackageRequest, Package, PackageVersion, PublishVersionRequest};
 use crate::state::AppState;
 use axum::{
     Json,
@@ -61,6 +62,8 @@ pub async fn list_packages(State(state): State<AppState>) -> (StatusCode, Json<s
             "version": version,
             "repository": pkg.repository,
             "download_count": pkg.download_count,
+            "deprecated": pkg.deprecated,
+            "deprecation_reason": pkg.deprecation_reason
         }));
     }
 
@@ -160,6 +163,8 @@ pub async fn search_packages(
             "version": version,
             "repository": pkg.repository,
             "download_count": pkg.download_count,
+            "deprecated": pkg.deprecated,
+            "deprecation_reason": pkg.deprecation_reason
         }));
     }
 
@@ -198,9 +203,9 @@ pub async fn get_package(
                 Err(_) => None,
             };
 
-            let (version, readme) = match latest_version {
-                Some(v) => (v.version, v.readme),
-                None => ("0.0.0".to_string(), None),
+            let (version, readme, license) = match latest_version {
+                Some(v) => (v.version, v.readme, v.license),
+                None => ("0.0.0".to_string(), None, None),
             };
 
             (
@@ -215,7 +220,10 @@ pub async fn get_package(
                     "updated_at": p.updated_at,
                     "download_count": p.download_count,
                     "version": version,
-                    "readme": readme
+                    "readme": readme,
+                    "license": license,
+                    "deprecated": p.deprecated,
+                    "deprecation_reason": p.deprecation_reason
                 })),
             )
         }
@@ -486,18 +494,47 @@ pub async fn upload_blob(
     hasher.update(&body);
     let hash = format!("{:x}", hasher.finalize());
 
-    // 2.5 Extract README from the zip if it exists
+    // 2.5 Extract README and License from the zip if they exist
     // Users can include documentation and we'll display it on the registry.
     let mut readme_content: Option<String> = None;
+    let mut license_detected: Option<String> = None;
+
     if let Ok(mut archive) = zip::ZipArchive::new(Cursor::new(&body)) {
         for i in 0..archive.len() {
             if let Ok(mut file) = archive.by_index(i) {
-                if file.name().eq_ignore_ascii_case("README.md") {
+                let name = file.name().to_string();
+                
+                // Check for README
+                if name.eq_ignore_ascii_case("README.md") {
                     let mut s = String::new();
                     if file.read_to_string(&mut s).is_ok() {
                         readme_content = Some(s);
                     }
-                    break;
+                }
+                
+                // Check for LICENSE
+                // We look for common names like LICENSE, LICENSE.md, LICENSE.txt
+                if name.eq_ignore_ascii_case("LICENSE") 
+                    || name.eq_ignore_ascii_case("LICENSE.md") 
+                    || name.eq_ignore_ascii_case("LICENSE.txt") 
+                {
+                    let mut s = String::new();
+                    if file.read_to_string(&mut s).is_ok() {
+                        // Detect license using askalono
+                        // We load the embedded cache. It's small (~300KB compressed).
+                        let cache_data = include_bytes!("../utils/license_cache.bin.zstd");
+                        if let Ok(store) = Store::from_cache(&cache_data[..]) {
+                            let analysis = store.analyze(&text_content(&s));
+                            if analysis.score > 0.8 {
+                                license_detected = Some(analysis.name.to_string());
+                            } else {
+                                license_detected = Some("Custom".to_string());
+                            }
+                        } else {
+                            // Fallback if cache fails (shouldn't happen)
+                            license_detected = Some("Custom".to_string());
+                        }
+                    }
                 }
             }
         }
@@ -512,13 +549,14 @@ pub async fn upload_blob(
         );
     }
 
-    // 4. Update the version record with the R2 URL and any README we found
+    // 4. Update the version record with the R2 URL and any README/License we found
     let pkg_id = package.id.expect("id exists");
     let source_url = format!("/packages/blobs/{}", hash);
 
-    let result = sqlx::query("UPDATE package_versions SET lua_source_url = $1, readme = $2 WHERE package_id = $3 AND version = $4")
+    let result = sqlx::query("UPDATE package_versions SET lua_source_url = $1, readme = $2, license = $3 WHERE package_id = $4 AND version = $5")
         .bind(source_url)
         .bind(readme_content)
+        .bind(license_detected)
         .bind(pkg_id)
         .bind(version)
         .execute(&state.db)
@@ -587,4 +625,199 @@ pub async fn download_blob(
             .into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "Blob not found").into_response(),
     }
+}
+
+/// Sets the deprecation status of a package.
+///
+/// Only the package author can do this.
+pub async fn deprecate_package(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Path(name): Path<String>,
+    Json(payload): Json<DeprecatePackageRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+        .bind(&name)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            );
+        }
+    };
+
+    let package = match package {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Package not found"})),
+            );
+        }
+    };
+
+    if package.author != user.username {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Not the owner"})),
+        );
+    }
+
+    let pkg_id = package.id.expect("Package ID should be present");
+
+    let result = sqlx::query("UPDATE packages SET deprecated = $1, deprecation_reason = $2 WHERE id = $3")
+        .bind(payload.deprecated)
+        .bind(payload.reason)
+        .bind(pkg_id)
+        .execute(&state.db)
+        .await;
+
+    match result {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({"message": "Deprecation status updated"})),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+/// Unpublishes a version of a package.
+///
+/// Policy:
+/// 1. Must be author.
+/// 2. Must be within 24 hours of publish.
+/// 3. No other packages must depend on this package (conservative check).
+pub async fn unpublish_version(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Path((name, version)): Path<(String, String)>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let package = match sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE name = $1")
+        .bind(&name)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            );
+        }
+    };
+
+    let package = match package {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Package not found"})),
+            );
+        }
+    };
+
+    if package.author != user.username {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Not the owner"})),
+        );
+    }
+
+    let pkg_id = package.id.expect("id exists");
+
+    // Fetch the specific version to check timestamp
+    let target_version = match sqlx::query_as::<_, PackageVersion>(
+        "SELECT * FROM package_versions WHERE package_id = $1 AND version = $2"
+    )
+    .bind(pkg_id)
+    .bind(&version)
+    .fetch_optional(&state.db)
+    .await {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            );
+        }
+    };
+
+    let target_version = match target_version {
+        Some(v) => v,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Version not found"})),
+            );
+        }
+    };
+
+    // Check 1: Time limit (24 hours)
+    let now = chrono::Utc::now().timestamp();
+    if now - target_version.created_at > 24 * 60 * 60 {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Cannot unpublish versions older than 24 hours. Deprecate it instead."})),
+        );
+    }
+
+    // Check 2: Dependents (Left-pad protection)
+    // Checks if ANY package depends on this package name.
+    let dependents: Option<i32> = match sqlx::query_scalar(
+        "SELECT 1 FROM package_versions WHERE dependencies ? $1 LIMIT 1"
+    )
+    .bind(&name)
+    .fetch_optional(&state.db)
+    .await {
+        Ok(d) => d,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            );
+        }
+    };
+
+    if dependents.is_some() {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Cannot unpublish: other packages depend on this package."})),
+        );
+    }
+
+    // Proceed to delete
+    // 1. Delete blob from R2
+    let hash = target_version.lua_source_url.replace("/packages/blobs/", "");
+    if let Err(e) = state.storage.delete_blob(&hash).await {
+        tracing::error!("Failed to delete blob {} during unpublish: {}", hash, e);
+        // Continue anyway to remove from DB, otherwise we leave a broken record.
+    }
+
+    // 2. Delete from DB
+    let delete_res = sqlx::query("DELETE FROM package_versions WHERE id = $1")
+        .bind(target_version.id)
+        .execute(&state.db)
+        .await;
+
+    match delete_res {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({"message": format!("Successfully unpublished {}@{}", name, version)})),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+fn text_content(s: &str) -> askalono::TextData {
+    askalono::TextData::from(s)
 }

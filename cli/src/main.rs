@@ -118,6 +118,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Info { package } => {
             registry::info(package).await?;
         }
+
+        Commands::Unpublish { package } => {
+            registry::unpublish(package).await?;
+        }
     }
 
     Ok(())

@@ -64,6 +64,10 @@ local Logger = require(game["ScriptService"]["logger"])
 Logger:info("hey, it works")
 ```
 
+## Documentation
+
+For full guides on publishing, CLI commands, and the API, visit **[getmosaic.run/docs](https://getmosaic.run/docs)**.
+
 ## Commands
 
 | Command          | What it does                           |
@@ -71,9 +75,12 @@ Logger:info("hey, it works")
 | `mosaic init`    | Create a `mosaic.toml` in your project |
 | `mosaic login`   | Authenticate with the registry         |
 | `mosaic install` | Install a package (`name@version`)     |
+| `mosaic update`  | Update all dependencies to latest      |
 | `mosaic search`  | Search the registry                    |
+| `mosaic info`    | Show details about a package           |
 | `mosaic list`    | Show installed packages                |
 | `mosaic publish` | Upload your package to the registry    |
+| `mosaic unpublish`| Remove a version from the registry    |
 | `mosaic remove`  | Uninstall a package                    |
 
 ## How it works
@@ -136,8 +143,8 @@ Mosaic is **early but functional**. The core loop works: you can init, install, 
 
 Want to help? We'd love that. Here's how:
 
-1. **Found a bug?** [Open an issue](https://github.com/doshibadev/mosaic/issues) with details
-2. **Have an idea?** [Start a discussion](https://github.com/doshibadev/mosaic/discussions)
+1. **Found a bug?** Open an issue with details
+2. **Have an idea?** Start a discussion
 3. **Want to code?** Fork the repo, make your changes, and submit a PR. Make sure to:
    - Test your changes locally
    - Keep commits clean and descriptive

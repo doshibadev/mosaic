@@ -3,9 +3,10 @@ use crate::config::Config;
 use crate::logger::Logger;
 use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
+use colored::*;
 use comfy_table::Table;
 use ignore::WalkBuilder;
-use inquire::{Password, Text};
+use inquire::{Confirm, Password, Text};
 use serde_json::json;
 use std::io::{Cursor, Read, Write};
 use zip::write::FileOptions;
@@ -324,6 +325,67 @@ pub async fn info(package_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Removes a package version from the registry.
+///
+/// This is a sensitive operation and only works under strict conditions:
+/// 1. You are the author.
+/// 2. It's been less than 24 hours since you published.
+/// 3. No one else has listed this package as a dependency.
+pub async fn unpublish(package_query: &str) -> Result<()> {
+    let auth = AuthConfig::load()?;
+    let token = auth
+        .token
+        .as_ref()
+        .context("Not logged in. Run 'mosaic login' first.")?;
+    let registry_url = auth
+        .registry_url
+        .as_ref()
+        .context("Registry URL missing in config.")?;
+
+    // 1. Parse name and version
+    if !package_query.contains('@') {
+        return Err(anyhow!("Please specify a version: name@version"));
+    }
+    let parts: Vec<&str> = package_query.split('@').collect();
+    if parts.len() != 2 {
+        return Err(anyhow!("Invalid format. Use name@version"));
+    }
+    let name = parts[0];
+    let version = parts[1];
+
+    // 2. Double check with the user
+    println!("{} {}", "[!]".yellow().bold(), "Unpublishing is permanent.");
+    let confirm = Confirm::new(&format!("Are you sure you want to unpublish {}@{}?", name, version))
+        .with_default(false)
+        .prompt()?;
+
+    if !confirm {
+        Logger::info("Aborted.");
+        return Ok(());
+    }
+
+    // 3. Send request
+    let client = reqwest::Client::new();
+    let res = client
+        .delete(format!("{}/packages/{}/versions/{}", registry_url, name, version))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await?;
+
+    if res.status().is_success() {
+        Logger::success(format!("Successfully unpublished {}@{}", name, version));
+    } else {
+        let text = res.text().await?;
+        let msg = match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(json) => json["error"].as_str().unwrap_or(&text).to_string(),
+            Err(_) => text,
+        };
+        Logger::error(format!("Failed to unpublish: {}", msg));
+    }
+
+    Ok(())
+}
+
 /// Publishes a package to the registry.
 ///
 /// This is the big one. Does a lot of work:
@@ -344,6 +406,72 @@ pub async fn publish(version_override: Option<&str>) -> Result<()> {
     let config = Config::load().context("Could not find mosaic.toml in current directory.")?;
     let name = &config.package.name;
     let version = version_override.unwrap_or(&config.package.version);
+
+    // --- PRE-PUBLISH CHECK ---
+    // Walk the directory first to show the user what they are about to publish.
+    // This prevents accidental uploads of node_modules, secrets, or wrong versions.
+    let mut files_to_publish = Vec::new();
+    let mut total_size: u64 = 0;
+
+    let walker = WalkBuilder::new(".")
+        .hidden(true)
+        .add_custom_ignore_filename(".mosaicignore")
+        .build();
+
+    for result in walker {
+        if let Ok(entry) = result {
+            let path = entry.path();
+            if path.is_dir() { continue; }
+
+            let path_str = path.to_string_lossy();
+            
+            // Same exclusion logic as below
+            if path_str.contains("node_modules") || path_str.contains("target") {
+                continue;
+            }
+            if path.file_name().map(|s| s == "mosaic.toml").unwrap_or(false) {
+                continue;
+            }
+
+            // Normalize path for display
+            let display_path = if path.starts_with(".") {
+                path.strip_prefix(".").unwrap_or(path).to_string_lossy().to_string()
+            } else {
+                path_str.to_string()
+            };
+
+            if display_path.is_empty() { continue; }
+
+            if let Ok(metadata) = std::fs::metadata(path) {
+                total_size += metadata.len();
+                files_to_publish.push(display_path);
+            }
+        }
+    }
+
+    // Display Summary
+    println!("");
+    Logger::header("Publish Summary");
+    println!("  {} {}", Logger::brand_text("Package:"), name);
+    println!("  {} {}", Logger::brand_text("Version:"), version);
+    println!("  {} {}", Logger::brand_text("Files:  "), files_to_publish.len());
+    println!("  {} {:.2} KB", Logger::brand_text("Size:   "), total_size as f64 / 1024.0);
+    println!("");
+    println!("  Included files:");
+    for file in &files_to_publish {
+        println!("    {}", Logger::dim(file));
+    }
+    println!("");
+
+    let confirm = Confirm::new("Are you sure you want to publish?")
+        .with_default(false)
+        .prompt()?;
+
+    if !confirm {
+        Logger::warn("Publish cancelled.");
+        return Ok(());
+    }
+    // -------------------------
 
     Logger::command("publish", format!("{}@{}", name, version));
 
