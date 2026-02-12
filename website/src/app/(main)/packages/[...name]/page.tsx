@@ -1,8 +1,9 @@
-import { getPackage } from "@/lib/registry";
+import { getPackage, getVersions } from "@/lib/registry";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Github, Package } from "lucide-react";
+import { ArrowLeft, Github, Package, TriangleAlert, Box, History, Calendar } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { format } from "date-fns";
 
 interface PackagePageProps {
   params: Promise<{
@@ -15,11 +16,20 @@ export default async function PackagePage({ params }: PackagePageProps) {
   // catch-all route [name].tsx. Join it to handle scoped packages like "scope/name".
   const { name } = await params;
   const packageName = name.join("/");
-  const pkg = await getPackage(packageName);
+  
+  // Parallel fetch for package details and version history
+  const [pkg, versions] = await Promise.all([
+    getPackage(packageName),
+    getVersions(packageName)
+  ]);
 
   if (!pkg) {
     notFound();
   }
+
+  // Find the latest version object to get dependencies
+  const latestVersionData = versions.find((v) => v.version === pkg.version);
+  const dependencies = latestVersionData?.dependencies || {};
 
   return (
     <div className="min-h-screen">
@@ -32,6 +42,19 @@ export default async function PackagePage({ params }: PackagePageProps) {
           <ArrowLeft className="h-4 w-4" />
           Back to packages
         </Link>
+
+        {/* Deprecation Warning */}
+        {pkg.deprecated && (
+          <div className="mb-10 bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex gap-4 items-start text-destructive">
+            <TriangleAlert className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-bold text-base mb-1">This package is deprecated</h3>
+              <p className="text-sm opacity-90 leading-relaxed">
+                {pkg.deprecation_reason || "The author has marked this package as deprecated. It may no longer be maintained."}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Header section with package name and latest version */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-10">
@@ -114,6 +137,61 @@ export default async function PackagePage({ params }: PackagePageProps) {
               </div>
             </div>
 
+            {/* Dependencies */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Box className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-lg font-semibold text-foreground">Dependencies</h2>
+              </div>
+              <div className="bg-card border border-border rounded-lg overflow-hidden">
+                {Object.keys(dependencies).length > 0 ? (
+                  <ul className="divide-y divide-border">
+                    {Object.entries(dependencies).map(([depName, depVer]) => (
+                      <li key={depName} className="px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                        <Link href={`/packages/${depName}`} className="font-mono text-sm text-primary hover:underline">
+                          {depName}
+                        </Link>
+                        <span className="text-xs font-mono text-muted-foreground bg-accent px-1.5 py-0.5 rounded">
+                          {depVer}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="p-4 text-sm text-muted-foreground italic">No dependencies.</div>
+                )}
+              </div>
+            </div>
+
+            {/* Version History */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-lg font-semibold text-foreground">Version History</h2>
+              </div>
+              <div className="bg-card border border-border rounded-lg overflow-hidden max-h-[300px] overflow-y-auto scrollbar-thin">
+                <ul className="divide-y divide-border">
+                  {versions.map((v) => (
+                    <li key={v.version} className="px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                      <div className="flex flex-col">
+                        <span className="font-mono text-sm font-medium text-foreground">v{v.version}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60 mt-0.5">
+                          <Calendar className="h-3 w-3" />
+                          {v.created_at ? format(new Date(v.created_at * 1000), "MMM d, yyyy") : "Unknown"}
+                        </div>
+                      </div>
+                      {/* Only show 'latest' badge for the top one? Or check logic. */}
+                      {v.version === pkg.version && (
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                          Latest
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
             {/* Metadata grid: author, license, repo, downloads */}
             <div className="grid grid-cols-1 gap-4">
               <div className="bg-card border border-border rounded-lg p-5">
@@ -122,7 +200,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
               </div>
               <div className="bg-card border border-border rounded-lg p-5">
                 <h3 className="text-sm text-muted-foreground/60 mb-2">License</h3>
-                <p className="text-base text-foreground font-medium">MIT</p>
+                <p className="text-base text-foreground font-medium">{pkg.license || "None"}</p>
               </div>
               {pkg.repository && (
                 <div className="bg-card border border-border rounded-lg p-5">

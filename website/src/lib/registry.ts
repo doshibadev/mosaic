@@ -7,6 +7,16 @@ export interface RegistryPackage {
   download_count: number;
   updated_at?: number;
   readme?: string;
+  license?: string;
+  deprecated?: boolean;
+  deprecation_reason?: string;
+}
+
+export interface RegistryVersion {
+  version: string;
+  created_at: number;
+  dependencies: Record<string, string>;
+  download_count?: number; // Not per version in DB yet, but maybe future proof
 }
 
 const REGISTRY_URL = process.env.NEXT_PUBLIC_REGISTRY_URL || "https://api.getmosaic.run";
@@ -63,5 +73,22 @@ export async function getPackage(name: string): Promise<RegistryPackage | null> 
   } catch (err) {
     console.error("Registry API error:", err);
     return null;
+  }
+}
+
+/// Fetches the version history for a package.
+export async function getVersions(name: string): Promise<RegistryVersion[]> {
+  try {
+    const res = await fetch(`${REGISTRY_URL}/packages/${encodeURIComponent(name)}/versions`, {
+      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (!res.ok) return [];
+
+    return await res.json();
+  } catch (err) {
+    console.error("Registry API error:", err);
+    return [];
   }
 }
