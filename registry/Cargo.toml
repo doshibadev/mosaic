@@ -29,3 +29,5 @@ sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "tim
 tower_governor = "0.8.0"
 governor = "0.10.4"
 regex = "1.12.3"
+sentry = { version = "0.46.2", features = ["default", "reqwest", "tracing"] }
+sentry-tracing = "0.46.2"

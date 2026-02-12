@@ -1,7 +1,29 @@
-target
+# Build artifacts
+target/
 **/*.rs.bk
+
+# Secrets & Config
 .env
-.git
+.env*
+*.env
+secret.txt
+
+# Version Control
+.git/
 .gitignore
-src/db/migrations
+
+# SQL / Migrations (Not needed in image as they are embedded in binary)
+src/db/migrations/
 *.sql
+
+# IDE & OS Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+.dockerignore

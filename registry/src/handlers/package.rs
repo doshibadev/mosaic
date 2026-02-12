@@ -187,7 +187,22 @@ pub async fn get_package(
 
     match package {
         Some(p) => {
-            let version = get_latest_version(&state, &p).await;
+            // Fetch the latest version AND its readme
+            let latest_version = match sqlx::query_as::<_, PackageVersion>(
+                "SELECT * FROM package_versions WHERE package_id = $1 ORDER BY created_at DESC LIMIT 1"
+            )
+            .bind(p.id)
+            .fetch_optional(&state.db)
+            .await {
+                Ok(v) => v,
+                Err(_) => None,
+            };
+
+            let (version, readme) = match latest_version {
+                Some(v) => (v.version, v.readme),
+                None => ("0.0.0".to_string(), None),
+            };
+
             (
                 StatusCode::OK,
                 Json(json!({
@@ -199,7 +214,8 @@ pub async fn get_package(
                     "created_at": p.created_at,
                     "updated_at": p.updated_at,
                     "download_count": p.download_count,
-                    "version": version
+                    "version": version,
+                    "readme": readme
                 })),
             )
         }
