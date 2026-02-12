@@ -222,37 +222,13 @@ pub async fn create_package(
 ) -> (StatusCode, Json<serde_json::Value>) {
     // 0. Validate package name strictly
     if let Err(e) = crate::utils::validation::validate_package_name(&payload.name) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": e})),
-        );
-    }
-
-    // Check if package with this name already exists
-    let existing: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM packages WHERE name = $1")
-        .bind(&payload.name)
-        .fetch_one(&state.db)
-        .await
-    {
-        Ok(count) => count,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
-            );
-        }
-    };
-
-    if existing > 0 {
-        return (
-            StatusCode::CONFLICT,
-            Json(json!({"error": "Package name already taken"})),
-        );
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": e})));
     }
 
     let now = chrono::Utc::now().timestamp();
 
     // Create the package. Author is always the authenticated user—can't lie about ownership.
+    // We rely on the UNIQUE(name) constraint to prevent duplicates.
     let created = sqlx::query_as::<_, Package>(
         r#"
         INSERT INTO packages (name, description, author, repository, created_at, updated_at)
@@ -260,7 +236,7 @@ pub async fn create_package(
         RETURNING *
         "#,
     )
-    .bind(payload.name)
+    .bind(&payload.name)
     .bind(payload.description)
     .bind(user.username) // Force the author to be the logged-in user
     .bind(payload.repository)
@@ -271,10 +247,22 @@ pub async fn create_package(
 
     match created {
         Ok(p) => (StatusCode::CREATED, Json(json!(p))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Could not create package: {}", e)})),
-        ),
+        Err(e) => {
+            // Check for unique constraint violation (Postgres code 23505)
+            if let Some(db_err) = e.as_database_error() {
+                if db_err.code() == Some("23505".into()) {
+                    return (
+                        StatusCode::CONFLICT,
+                        Json(json!({"error": "Package name already taken"})),
+                    );
+                }
+            }
+
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Could not create package: {}", e)})),
+            )
+        }
     }
 }
 
@@ -330,35 +318,10 @@ pub async fn create_version(
     }
 
     let pkg_id = package.id.expect("package should have an id");
-
-    // Check if this version already exists (can't republish the same semver)
-    let existing_count: i64 = match sqlx::query_scalar(
-        "SELECT COUNT(*) FROM package_versions WHERE package_id = $1 AND version = $2",
-    )
-    .bind(pkg_id)
-    .bind(&payload.version)
-    .fetch_one(&state.db)
-    .await
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
-            );
-        }
-    };
-
-    if existing_count > 0 {
-        return (
-            StatusCode::CONFLICT,
-            Json(json!({"error": "Version already exists"})),
-        );
-    }
-
     let now = chrono::Utc::now().timestamp();
 
     // Create the version record. lua_source_url will be updated later when the blob is uploaded.
+    // We rely on the UNIQUE(package_id, version) constraint to prevent duplicates.
     let created_version = sqlx::query_as::<_, PackageVersion>(
         r#"
         INSERT INTO package_versions (package_id, version, lua_source_url, created_at, dependencies)
@@ -367,7 +330,7 @@ pub async fn create_version(
         "#,
     )
     .bind(pkg_id)
-    .bind(payload.version)
+    .bind(&payload.version)
     .bind(payload.lua_source_url)
     .bind(now)
     .bind(serde_json::to_value(&payload.dependencies).unwrap_or(json!({})))
@@ -375,18 +338,35 @@ pub async fn create_version(
     .await;
 
     // Update the package's updated_at timestamp so it shows as recently modified
-    let _ = sqlx::query("UPDATE packages SET updated_at = $1 WHERE id = $2")
-        .bind(now)
-        .bind(pkg_id)
-        .execute(&state.db)
-        .await;
+    // We do this optimistically; if the version insert failed, this update is harmless/redundant
+    // but typically we'd only reach here if insert succeeded or we handle error below.
+    // Actually, let's only update if successful.
+    if created_version.is_ok() {
+        let _ = sqlx::query("UPDATE packages SET updated_at = $1 WHERE id = $2")
+            .bind(now)
+            .bind(pkg_id)
+            .execute(&state.db)
+            .await;
+    }
 
     match created_version {
         Ok(v) => (StatusCode::CREATED, Json(json!(v))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Failed to create version: {}", e)})),
-        ),
+        Err(e) => {
+            // Check for unique constraint violation (Postgres code 23505)
+            if let Some(db_err) = e.as_database_error() {
+                if db_err.code() == Some("23505".into()) {
+                    return (
+                        StatusCode::CONFLICT,
+                        Json(json!({"error": "Version already exists"})),
+                    );
+                }
+            }
+
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to create version: {}", e)})),
+            )
+        }
     }
 }
 
@@ -529,11 +509,19 @@ pub async fn upload_blob(
         .await;
 
     if let Err(e) = result {
-        tracing::error!("DB Update failed: {}. Initiating rollback for blob {}", e, hash);
-        
+        tracing::error!(
+            "DB Update failed: {}. Initiating rollback for blob {}",
+            e,
+            hash
+        );
+
         // Rollback: delete the uploaded blob to prevent orphaned files
         if let Err(cleanup_err) = state.storage.delete_blob(&hash).await {
-            tracing::error!("CRITICAL: Rollback failed for blob {}: {}", hash, cleanup_err);
+            tracing::error!(
+                "CRITICAL: Rollback failed for blob {}: {}",
+                hash,
+                cleanup_err
+            );
         } else {
             tracing::info!("Rollback successful: blob {} deleted.", hash);
         }
