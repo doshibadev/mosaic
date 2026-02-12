@@ -90,11 +90,14 @@ export default function HomePage() {
               <tbody className="divide-y divide-border">
                 {[
                   ["mosaic init", "Create a new project"],
-                  ["mosaic add <package>", "Add a dependency"],
+                  ["mosaic install <package>", "Add a dependency"],
                   ["mosaic remove <package>", "Remove a dependency"],
-                  ["mosaic install", "Install from lockfile"],
+                  ["mosaic update", "Update all dependencies"],
+                  ["mosaic upgrade", "Upgrade the CLI itself"],
                   ["mosaic search <query>", "Search the registry"],
+                  ["mosaic info <package>", "View package details"],
                   ["mosaic publish", "Publish your package"],
+                  ["mosaic unpublish <pkg>@<ver>", "Remove a published version"],
                 ].map(([cmd, desc]) => (
                   <tr key={cmd} className="hover:bg-accent/50 transition-colors">
                     <td className="px-6 py-4 font-mono text-base text-foreground whitespace-nowrap">{cmd}</td>

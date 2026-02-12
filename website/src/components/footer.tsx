@@ -19,7 +19,7 @@ export function Footer() {
           <Link href="/docs" className="hover:text-foreground transition-colors text-sm font-medium">Docs</Link>
           <Link href="/packages" className="hover:text-foreground transition-colors text-sm font-medium">Packages</Link>
           <div className="h-4 w-[1px] bg-border" />
-          <Link href="https://discord.gg/mosaic" target="_blank" className="hover:text-foreground transition-colors" aria-label="Discord">
+          <Link href="https://discord.gg/QeJVQ3emNp" target="_blank" className="hover:text-foreground transition-colors" aria-label="Discord">
             <MessageSquare className="h-5 w-5" />
           </Link>
           <Link href="https://x.com/getmosaic" target="_blank" className="hover:text-foreground transition-colors" aria-label="Twitter">

@@ -144,8 +144,8 @@ Mosaic is **early but functional**. The core loop works: you can init, install, 
 
 Want to help? We'd love that. Here's how:
 
-1. **Found a bug?** Open an issue with details
-2. **Have an idea?** Start a discussion
+1. **Found a bug?** [Open an issue](https://github.com/doshibadev/mosaic/issues) with details
+2. **Have an idea?** Join our [Discord Server](https://discord.gg/QeJVQ3emNp) or start a discussion
 3. **Want to code?** Fork the repo, make your changes, and submit a PR. Make sure to:
    - Test your changes locally
    - Keep commits clean and descriptive
