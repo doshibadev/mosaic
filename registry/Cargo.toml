@@ -1,6 +1,6 @@
 [package]
 name = "registry"
-version = "0.1.0"
+version = "0.2.0-beta.1"
 edition = "2024"
 
 [dependencies]
@@ -25,7 +25,13 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 uuid = { version = "1.20.0", features = ["v4", "serde"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 zip = "7.4.0"
-sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "time", "uuid", "macros"], default-features = false }
+sqlx = { version = "0.8.6", features = [
+  "runtime-tokio-rustls",
+  "postgres",
+  "time",
+  "uuid",
+  "macros",
+], default-features = false }
 tower_governor = "0.8.0"
 governor = "0.10.4"
 regex = "1.12.3"

@@ -1,6 +1,6 @@
 [package]
 name = "mosaic"
-version = "0.1.0"
+version = "0.2.0-beta.1"
 edition = "2024"
 
 [dependencies]
@@ -24,7 +24,11 @@ walkdir = "2.5.0"
 comfy-table = "7.2.2"
 console = "0.16.2"
 ignore = "0.4.25"
-keyring = { version = "3.6.3", default-features = false, features = ["windows-native", "apple-native", "linux-native"] }
+keyring = { version = "3.6.3", default-features = false, features = [
+  "windows-native",
+  "apple-native",
+  "linux-native",
+] }
 bytes = "1.11.1"
 env_logger = "0.11.9"
 log = "0.4.29"
