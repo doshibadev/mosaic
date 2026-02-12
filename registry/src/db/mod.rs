@@ -100,15 +100,13 @@ pub async fn connect() -> Result<DB> {
 
     // 6. Download Count Column
     // Added this later, hence the separate ALTER TABLE.
-    // We ignore errors here because if it already exists, that's fine—
-    // the important thing is that it's there by the end.
-    let _ = sqlx::query(
+    sqlx::query(
         r#"
         ALTER TABLE packages ADD COLUMN IF NOT EXISTS download_count BIGINT NOT NULL DEFAULT 0;
     "#,
     )
     .execute(&pool)
-    .await;
+    .await?;
 
     // 7. Revoked Tokens Table
     // Used for server-side logout. We store the JTI (JWT ID) of revoked tokens.
@@ -127,41 +125,41 @@ pub async fn connect() -> Result<DB> {
     // 8. Dependencies Column
     // We store dependencies as JSONB because it's flexible and Postgres handles it well.
     // Each entry is a map of "package-name": "version-requirement".
-    let _ = sqlx::query(
+    sqlx::query(
         r#"
         ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS dependencies JSONB NOT NULL DEFAULT '{}'::jsonb;
     "#,
     )
     .execute(&pool)
-    .await;
+    .await?;
 
     // 9. Deprecation
     // Allows authors to mark packages as deprecated.
-    let _ = sqlx::query(
+    sqlx::query(
         r#"
         ALTER TABLE packages ADD COLUMN IF NOT EXISTS deprecated BOOLEAN NOT NULL DEFAULT FALSE;
     "#,
     )
     .execute(&pool)
-    .await;
+    .await?;
 
-    let _ = sqlx::query(
+    sqlx::query(
         r#"
         ALTER TABLE packages ADD COLUMN IF NOT EXISTS deprecation_reason TEXT;
     "#,
     )
     .execute(&pool)
-    .await;
+    .await?;
 
     // 10. License
     // Detected license from LICENSE file (SPDX identifier or "Custom").
-    let _ = sqlx::query(
+    sqlx::query(
         r#"
         ALTER TABLE package_versions ADD COLUMN IF NOT EXISTS license TEXT;
     "#,
     )
     .execute(&pool)
-    .await;
+    .await?;
 
     Ok(pool)
 }

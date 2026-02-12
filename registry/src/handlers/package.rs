@@ -45,6 +45,7 @@ pub async fn list_packages(State(state): State<AppState>) -> (StatusCode, Json<s
     {
         Ok(p) => p,
         Err(e) => {
+            tracing::error!("DB error listing packages: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("DB error: {}", e)})),
@@ -108,6 +109,7 @@ pub async fn search_packages(
         {
             Ok(p) => p,
             Err(e) => {
+                tracing::error!("DB error searching packages (no query): {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({"error": e.to_string()})),
@@ -145,6 +147,7 @@ pub async fn search_packages(
         {
             Ok(p) => p,
             Err(e) => {
+                tracing::error!("DB error searching packages (with query): {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({"error": e.to_string()})),
@@ -183,6 +186,7 @@ pub async fn get_package(
     {
         Ok(p) => p,
         Err(e) => {
+            tracing::error!("DB error getting package: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("DB error: {}", e)})),

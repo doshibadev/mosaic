@@ -43,7 +43,10 @@ export async function searchPackages(query: string = "", options: SearchOptions 
       signal: AbortSignal.timeout(3000), // Timeout after 3s—fail fast instead of hanging
     });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
 
     const data = await res.json();
     if (Array.isArray(data)) return data;
@@ -67,7 +70,11 @@ export async function getPackage(name: string): Promise<RegistryPackage | null> 
       signal: AbortSignal.timeout(3000), // Fail fast if API is slow
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+        if (res.status === 404) return null;
+        const errorText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
 
     return await res.json();
   } catch (err) {
@@ -84,7 +91,11 @@ export async function getVersions(name: string): Promise<RegistryVersion[]> {
       signal: AbortSignal.timeout(3000),
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+        if (res.status === 404) return [];
+        const errorText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
 
     return await res.json();
   } catch (err) {
